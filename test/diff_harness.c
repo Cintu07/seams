@@ -5,6 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+/* Internal snake routines; hidden in shared builds but linkable here. */
+uint64_t seams_common_prefix(const uint32_t *a, const uint32_t *b, uint64_t limit);
+uint64_t seams_common_suffix(const uint32_t *a_end, const uint32_t *b_end, uint64_t limit);
 
 typedef struct {
     seams_line_table a_lines, b_lines;
@@ -267,6 +273,37 @@ static void check_bad_scripts(void) {
     free_run(&run);
 }
 
+/* Each run sits against a PROT_NONE page on the side the routine walks toward,
+   so a read past the run faults. Mismatch at every position, every limit. */
+static uint32_t *guarded_page(int guard_after) {
+    const long page = sysconf(_SC_PAGESIZE);
+    uint8_t *m = mmap(NULL, 2 * page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (m == MAP_FAILED) { perror("mmap"); exit(1); }
+    mprotect(guard_after ? m + page : m, page, PROT_NONE);
+    return (uint32_t *)(m + page); /* end of data before the guard, or start of data after it */
+}
+
+static void check_snakes(void) {
+    uint32_t *const prefix_end_a = guarded_page(1), *const prefix_end_b = guarded_page(1);
+    uint32_t *const suffix_start_a = guarded_page(0), *const suffix_start_b = guarded_page(0);
+    for (uint64_t n = 0; n <= 40; ++n)
+        for (uint64_t miss = 0; miss <= n; ++miss)
+            for (uint64_t limit = 0; limit <= n; ++limit) {
+                uint32_t *pa = prefix_end_a - n, *pb = prefix_end_b - n;
+                for (uint64_t i = 0; i < n; ++i) pa[i] = pb[i] = suffix_start_a[i] = suffix_start_b[i] = (uint32_t)next_random();
+                if (miss < n) { pb[miss] ^= 1; suffix_start_b[n - 1 - miss] ^= 1; }
+                const uint64_t expect = miss < limit ? miss : limit;
+                const uint64_t got[2] = {
+                    seams_common_prefix(pa, pb, limit), seams_common_suffix(suffix_start_a + n, suffix_start_b + n, limit)};
+                for (int k = 0; k < 2; ++k)
+                    if (got[k] != expect) {
+                        fprintf(stderr, "FAIL [%s]: snake routine %d n=%" PRIu64 " miss=%" PRIu64 " limit=%" PRIu64 " got=%" PRIu64 "\n",
+                                build_name, k, n, miss, limit, got[k]);
+                        exit(1);
+                    }
+            }
+}
+
 int main(int argc, char **argv) {
     build_name = argc > 1 ? argv[1] : "normal hash";
     const char *env = getenv("SEAMS_FUZZ_PAIRS");
@@ -274,11 +311,12 @@ int main(int argc, char **argv) {
     const char *seed_env = getenv("SEAMS_FUZZ_SEED");
     fuzz_seed = seed_env ? strtoull(seed_env, NULL, 0) : 0x5ea0d1ffULL;
     const uint64_t start_seed = fuzz_seed;
+    check_snakes();
     check_edge_cases();
     check_bad_scripts();
     const uint64_t edge = fuzz_case;
     check_fuzz(pairs);
-    printf("PASS [%s]: %" PRIu64 " edge pairs, %" PRIu64 " fuzz pairs (seed 0x%" PRIx64 "): round trip, minimal vs ref, script shape, scalar==avx2\n",
+    printf("PASS [%s]: snake routines, %" PRIu64 " edge pairs, %" PRIu64 " fuzz pairs (seed 0x%" PRIx64 "): round trip, minimal vs ref, script shape, scalar==avx2\n",
            build_name, edge, fuzz_case - edge, start_seed);
     return 0;
 }
