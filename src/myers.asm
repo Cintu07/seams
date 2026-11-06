@@ -108,6 +108,9 @@ seams_mark_changed:
 %define diagonal r14
 %define x r15
 %define y rbp
+%define ids_a rdi
+%define ids_b rsi
+%define id_a ecx
 %define limit rdx
 %define other rax
 seams_forward_round:
@@ -140,13 +143,17 @@ seams_forward_round:
     cmovl limit, other
     test limit, limit
     jle .snake_followed
-    mov rdi, [match + seams_match.work_a]
-    lea rdi, [rdi + x * SEAMS_U32_BYTES]
-    mov rsi, [match + seams_match.work_b]
-    lea rsi, [rsi + y * SEAMS_U32_BYTES]
-    call seams_common_prefix
-    add x, rax
-    add y, rax
+    mov ids_a, [match + seams_match.work_a]
+    mov ids_b, [match + seams_match.work_b]
+    add limit, x
+.extend_snake:
+    mov id_a, [ids_a + x * SEAMS_U32_BYTES]
+    cmp id_a, [ids_b + y * SEAMS_U32_BYTES]
+    jne .snake_followed
+    inc x
+    inc y
+    cmp x, limit
+    jl .extend_snake
 .snake_followed:
     mov [kv + diagonal * SEAMS_U64_BYTES], x
     cmp qword [box + seams_box.odd], 0
@@ -200,13 +207,18 @@ seams_backward_round:
     cmovl limit, other
     test limit, limit
     jle .snake_followed
-    mov rdi, [match + seams_match.work_a]
-    lea rdi, [rdi + x * SEAMS_U32_BYTES]
-    mov rsi, [match + seams_match.work_b]
-    lea rsi, [rsi + y * SEAMS_U32_BYTES]
-    call seams_common_suffix
-    sub x, rax
-    sub y, rax
+    mov ids_a, [match + seams_match.work_a]
+    mov ids_b, [match + seams_match.work_b]
+    neg limit
+    add limit, x
+.extend_snake:
+    mov id_a, [ids_a + x * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
+    cmp id_a, [ids_b + y * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
+    jne .snake_followed
+    dec x
+    dec y
+    cmp x, limit
+    jg .extend_snake
 .snake_followed:
     mov [kv + diagonal * SEAMS_U64_BYTES], x
     cmp qword [box + seams_box.odd], 0
@@ -239,6 +251,9 @@ seams_backward_round:
 %undef y
 %undef limit
 %undef other
+%undef ids_a
+%undef ids_b
+%undef id_a
 
 %define match r12
 %define box rbx
