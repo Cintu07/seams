@@ -1,0 +1,12 @@
+{
+  "name": "seams-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node serve.mjs",
+    "bench": "node bench_viewer.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

@@ -32,6 +32,19 @@ const seams = await loadSeams(wasmBytes);
 const script = seams.diff(oldBytes, newBytes); // { aStart, bStart, aCount, bCount } as Uint32Arrays
 ```
 
+## Browser viewer
+
+`web/` is a diff viewer on top of the wasm core: the diff runs in a worker, the view is drawn with
+WebGL2 (only visible rows, one draw call per frame). Build the wasm core, then:
+
+```sh
+node web/serve.mjs          # http://localhost:4174/ ; pick or drop two files
+```
+
+`?old=NAME&new=NAME` loads files from the fixtures directory (`SEAMS_FIXTURES`). Keys: arrows, Page
+Up/Down, Home/End, `n`/`p` for the next/previous change. A 1M-line diff scrolls within the display
+frame budget (p99 under 8 ms at 145 Hz) with 0.2 ms of CPU per frame; `web/bench_viewer.mjs` measures it.
+
 ## Use it
 
 `make` builds `build/seams`, a command-line diff that prints a standard unified diff (`patch` and

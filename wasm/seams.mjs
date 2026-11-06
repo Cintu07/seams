@@ -87,6 +87,13 @@ export class Seams {
     };
   }
 
+  // Line starts and lengths of both files from the last diff call (every line, including trimmed ones).
+  lineTables() {
+    const { where, na, nb } = this.last;
+    const copy = (name, n) => new Uint32Array(this.memory.buffer, where[name], n).slice();
+    return { aStart: copy('a_start', na), aLen: copy('a_lens', na), bStart: copy('b_start', nb), bLen: copy('b_lens', nb) };
+  }
+
   // Rebuilds b from a and a script, using the line tables of the last diff call.
   // A script from elsewhere (the native engine) may be passed to check it against these tables.
   apply(script) {

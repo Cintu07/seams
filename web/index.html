@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seams viewer</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #0d1117; --panel: #141a22; --line: #222b36; --text: #d6dde6; --dim: #8b98a8; --accent: #6aa6f0;
+          --del: #f47067; --ins: #57d38c; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header b { font-weight: 600; letter-spacing: .02em; }
+  label.file { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
+  input[type=file] { color: var(--dim); max-width: 210px; font-size: 12px; }
+  input[type=number] { width: 110px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+  #stats { margin-left: auto; font: 12px/1.3 "Cascadia Mono", Consolas, monospace; color: var(--dim); white-space: pre; }
+  #stats .del { color: var(--del); } #stats .ins { color: var(--ins); }
+  main { position: relative; min-height: 0; display: grid; grid-template-columns: 1fr 14px; }
+  #view { width: 100%; height: 100%; display: block; outline: none; }
+  #bar { position: relative; background: var(--panel); border-left: 1px solid var(--line); cursor: pointer; }
+  #marks { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #thumb { position: absolute; left: 1px; right: 1px; min-height: 18px; background: rgba(214, 221, 230, .18); border-radius: 3px; }
+  #drop { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 15px; pointer-events: none; text-align: center; }
+  #drop[hidden] { display: none; }
+  #a11y { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header>
+  <b>seams</b>
+  <label class="file">old <input type="file" id="oldFile"></label>
+  <label class="file">new <input type="file" id="newFile"></label>
+  <label class="file">go to row <input type="number" id="goto" min="1"></label>
+  <span id="stats">drop two files, or pick them above</span>
+</header>
+<main>
+  <canvas id="view" tabindex="0" aria-label="diff view"></canvas>
+  <div id="bar"><canvas id="marks"></canvas><div id="thumb"></div></div>
+  <div id="drop">Drop the old file, then the new file, anywhere on this page.<br>Or open <code>?old=10k.old.ts&amp;new=10k.e100.new.ts</code> to load fixtures.</div>
+</main>
+<script type="module" src="./app.mjs"></script>
+</body>
+</html>
