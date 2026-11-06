@@ -1,0 +1,13 @@
+# Only code goes to GitHub. Study notes, plans, scratch work and results stay local.
+/.study/
+/scratch/
+/build/
+/bench/results/
+/BRIEF.md
+/MILESTONES.md
+/NATIVE_PLAN.md
+/PHASE0_STATUS.md
+/STUDY_NOTES.md
+/STUDY_PIERRE.md
+**/node_modules/
+**/target/
