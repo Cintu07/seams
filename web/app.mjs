@@ -1,18 +1,68 @@
 // Viewer page: loads two files, diffs them in a worker, renders with WebGL2, owns scrolling.
 // window.viewer exposes load/scroll/jump hooks for the automated benchmark (web/bench_viewer.mjs).
-import { DiffRenderer, PALETTE } from './renderer.mjs';
+import { DiffRenderer } from './renderer.mjs';
+import { THEMES, icon, face, drawSkyline } from './look.mjs';
 
-const canvas = document.getElementById('view');
-const stats = document.getElementById('stats');
-const bar = document.getElementById('bar'), thumb = document.getElementById('thumb'), marks = document.getElementById('marks');
-const drop = document.getElementById('drop');
-const renderer = new DiffRenderer(canvas);
+const $ = (id) => document.getElementById(id);
+const canvas = $('view'), stats = $('stats'), bar = $('bar'), thumb = $('thumb'), marks = $('marks');
+const empty = $('empty'), city = $('city'), mascot = $('mascot'), say = $('say');
+
+const storage = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+                  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window */ } } };
+let theme = THEMES[storage.get('seams-theme')] ?? THEMES.sage;
+
+// the canvas atlas needs the real font, so wait for it (briefly) before the first draw
+await Promise.race([document.fonts.load('13px "IBM Plex Mono"'), new Promise((r) => setTimeout(r, 1500))]);
+const renderer = new DiffRenderer(canvas, { palette: theme.renderer });
 const worker = new Worker(new URL('./diff_worker.mjs', import.meta.url), { type: 'module' });
 
 let current = null;
 let requestId = 0;
 let frameQueued = false;
 const frameTimes = [];  // CPU ms spent building and submitting each frame
+
+// ------------------------------------------------------------------ look
+
+function setMood(name, words) {
+  mascot.innerHTML = face(name, { scale: 3, accent: theme.renderer.insertedMark });
+  say.textContent = words;
+  mascot.classList.remove('bounce');
+  void mascot.offsetWidth;
+  mascot.classList.add('bounce');
+}
+
+function applyTheme(next) {
+  theme = next;
+  const css = document.documentElement.style;
+  css.setProperty('--page', theme.page); css.setProperty('--panel', theme.panel); css.setProperty('--ink', theme.ink);
+  css.setProperty('--soft', theme.soft); css.setProperty('--line', theme.line);
+  css.setProperty("--sky-ink", theme.skyInk); css.setProperty("--sky-glow", theme.skyGlow);
+  css.setProperty('--del', theme.renderer.deletedMark); css.setProperty('--ins', theme.renderer.insertedMark);
+  document.documentElement.dataset.theme = theme.name;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', theme.page);
+  $('oldIcon').innerHTML = icon('oldFile', { scale: 2 });
+  $('newIcon').innerHTML = icon('newFile', { scale: 2, accent: '#e0a03a' });
+  renderer.setPalette(theme.renderer);
+  if (!empty.hidden) drawSkyline(city, theme);
+  drawMarks();
+  requestFrame();
+  storage.set('seams-theme', theme.name);
+}
+
+function tick() {
+  const d = new Date();
+  $('clock').textContent = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  $('date').textContent = `${d.getDate()}日 ${d.getHours()}時`;
+}
+setInterval(tick, 1000);
+tick();
+
+mascot.addEventListener('click', () => {
+  applyTheme(theme.name === 'sage' ? THEMES.dusk : THEMES.sage);
+  setMood(current ? (current.records ? 'happy' : 'same') : 'idle', theme.name === 'sage' ? 'sage, like a calm morning' : 'dusk, city lights on');
+});
+
+// ------------------------------------------------------------------ drawing
 
 function requestFrame() {
   if (frameQueued) return;
@@ -28,15 +78,16 @@ function requestFrame() {
 }
 
 function placeThumb() {
+  thumb.hidden = !current;
   if (!current) return;
   const h = bar.clientHeight, total = renderer.rowCount, page = renderer.pageRows;
-  const size = Math.max(18, h * Math.min(1, page / total));
+  const size = Math.max(20, h * Math.min(1, page / total));
   const top = renderer.maxScrollRow ? (renderer.scrollRow / renderer.maxScrollRow) * (h - size) : 0;
   thumb.style.height = `${size}px`;
   thumb.style.top = `${top}px`;
 }
 
-// one pixel row of the scrollbar per slice of rows; red or green where that slice has changes
+// one pixel row of the scrollbar per slice of rows; red left, green right where that slice changes
 function drawMarks() {
   const dpr = devicePixelRatio || 1;
   marks.width = Math.max(1, Math.round(bar.clientWidth * dpr));
@@ -51,23 +102,25 @@ function drawMarks() {
     const y = Math.floor((r / total) * h);
     if (kind[r] === 1) deleted[y] = 1; else inserted[y] = 1;
   }
+  const mark = Math.max(2, Math.round(2 * dpr));
   for (let y = 0; y < h; ++y) {
-    if (deleted[y]) { ctx.fillStyle = PALETTE.deletedMark; ctx.fillRect(0, y, marks.width / 2, Math.max(1, dpr)); }
-    if (inserted[y]) { ctx.fillStyle = PALETTE.insertedMark; ctx.fillRect(marks.width / 2, y, marks.width / 2, Math.max(1, dpr)); }
+    if (deleted[y]) { ctx.fillStyle = theme.renderer.deletedMark; ctx.fillRect(0, y, marks.width / 2, mark); }
+    if (inserted[y]) { ctx.fillStyle = theme.renderer.insertedMark; ctx.fillRect(marks.width / 2, y, marks.width / 2, mark); }
   }
 }
 
-function showStats(extra = '') {
+function showStats() {
   if (!current) return;
   const sorted = [...frameTimes].sort((x, y) => x - y);
   const p = (q) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : 0).toFixed(2);
   const t = current.timing;
   stats.innerHTML =
-    `${current.rows.kind.length.toLocaleString()} rows  <span class="del">-${current.deleted.toLocaleString()}</span> <span class="ins">+${current.inserted.toLocaleString()}</span>  ` +
-    `diff ${t.diff.toFixed(1)} ms  layout ${t.layout.toFixed(1)} ms  first frame ${t.firstFrame.toFixed(1)} ms\n` +
-    `frame cpu p50 ${p(0.5)} ms  p99 ${p(0.99)} ms  row ${Math.floor(renderer.scrollRow + 1).toLocaleString()}${extra}`;
+    `${current.rows.kind.length.toLocaleString()} rows  <span class="del">−${current.deleted.toLocaleString()}</span>  <span class="ins">+${current.inserted.toLocaleString()}</span>\n` +
+    `diff ${t.diff.toFixed(1)} ms · first frame ${t.firstFrame.toFixed(1)} ms · frame ${p(0.99)} ms · row ${Math.floor(renderer.scrollRow + 1).toLocaleString()}`;
 }
-setInterval(() => showStats(), 250);
+setInterval(showStats, 250);
+
+// ------------------------------------------------------------------ loading
 
 function diffInWorker(a, b) {
   const id = ++requestId;
@@ -83,9 +136,11 @@ function diffInWorker(a, b) {
 }
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(performance.now())));
+const shortName = (path) => String(path).split(/[\\/]/).pop();
 
 // a and b are ArrayBuffers already in memory; the timer starts here
 async function show(a, b, names) {
+  setMood('busy', 'diffing…');
   const t0 = performance.now();
   const result = await diffInWorker(a, b);
   result.a = new Uint8Array(result.a);
@@ -95,9 +150,14 @@ async function show(a, b, names) {
   renderer.draw();
   await nextFrame();
   result.timing.firstFrame = performance.now() - t0;
-  result.names = names;
-  drop.hidden = true;
-  document.title = `seams: ${names[1]}`;
+  empty.hidden = true;
+  const [oldName, newName] = names.map(shortName);
+  $('files').textContent = `${oldName} → ${newName}`;
+  $('oldName').textContent = oldName;
+  $('newName').textContent = newName;
+  document.title = `seams · ${newName}`;
+  if (result.records) setMood('happy', `−${result.deleted.toLocaleString()} +${result.inserted.toLocaleString()} · n for next change`);
+  else setMood('same', 'identical files ✿');
   drawMarks();
   requestFrame();
   showStats();
@@ -136,21 +196,22 @@ canvas.addEventListener('keydown', (e) => {
   else if (e.key === 'Home') { renderer.scrollTo(0); requestFrame(); e.preventDefault(); }
   else if (e.key === 'End') { renderer.scrollTo(Infinity); requestFrame(); e.preventDefault(); }
   else if (e.key === 'n' || e.key === 'p') { jumpToChange(e.key === 'n' ? 1 : -1); e.preventDefault(); }
+  else if (e.key === 't') { mascot.click(); e.preventDefault(); }
 });
 
 // next or previous change from the current row; n / p
 function jumpToChange(direction) {
   const kind = current?.rows.kind;
   if (!kind) return;
-  let r = Math.floor(renderer.scrollRow) + direction;
+  let r = Math.floor(renderer.scrollRow) + 3 + direction;
   while (r >= 0 && r < kind.length && kind[r] && kind[r - direction]) r += direction;
   while (r >= 0 && r < kind.length && !kind[r]) r += direction;
   if (r >= 0 && r < kind.length) { renderer.scrollTo(r - 3); requestFrame(); }
+  else setMood('sleepy', direction > 0 ? 'no more changes below' : 'no more changes above');
 }
 
 function scrollToBarY(y) {
-  const h = bar.clientHeight;
-  renderer.scrollTo((y / h) * renderer.rowCount - renderer.pageRows / 2);
+  renderer.scrollTo((y / bar.clientHeight) * renderer.rowCount - renderer.pageRows / 2);
   requestFrame();
 }
 let dragging = false;
@@ -158,25 +219,27 @@ bar.addEventListener('pointerdown', (e) => { dragging = true; bar.setPointerCapt
 bar.addEventListener('pointermove', (e) => { if (dragging) scrollToBarY(e.clientY - bar.getBoundingClientRect().top); });
 bar.addEventListener('pointerup', () => { dragging = false; });
 
-document.getElementById('goto').addEventListener('change', (e) => {
-  renderer.scrollTo(Number(e.target.value) - 1);
+new ResizeObserver(() => {
+  renderer.resize();
+  drawMarks();
+  if (!empty.hidden) drawSkyline(city, theme);
   requestFrame();
-  canvas.focus();
-});
-
-new ResizeObserver(() => { renderer.resize(); drawMarks(); requestFrame(); }).observe(canvas);
+}).observe(canvas);
 matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change', () => { renderer.resize(); requestFrame(); });
 
-// files: two pickers, or drop the old file then the new one
+// files: the two page buttons, or drop the old file then the new one
 const picked = { old: null, new: null };
 async function tryShowPicked() {
+  if (picked.old && !picked.new) setMood('idle', `${picked.old.name} · now the new one`);
   if (!picked.old || !picked.new) return;
   const [a, b] = await Promise.all([picked.old.arrayBuffer(), picked.new.arrayBuffer()]);
   await show(a, b, [picked.old.name, picked.new.name]);
   canvas.focus();
 }
-document.getElementById('oldFile').addEventListener('change', (e) => { picked.old = e.target.files[0]; tryShowPicked(); });
-document.getElementById('newFile').addEventListener('change', (e) => { picked.new = e.target.files[0]; tryShowPicked(); });
+$('pickOld').addEventListener('click', () => $('oldFile').click());
+$('pickNew').addEventListener('click', () => $('newFile').click());
+$('oldFile').addEventListener('change', (e) => { picked.old = e.target.files[0]; tryShowPicked(); });
+$('newFile').addEventListener('change', (e) => { picked.new = e.target.files[0]; tryShowPicked(); });
 addEventListener('dragover', (e) => e.preventDefault());
 addEventListener('drop', (e) => {
   e.preventDefault();
@@ -237,9 +300,11 @@ async function idle(ms) {
 
 window.viewer = { loadUrls, autoscroll, jumps, idle, renderer };
 
+applyTheme(theme);
+setMood('idle', 'hello · drop two files');
 const params = new URLSearchParams(location.search);
 if (params.get('old') && params.get('new')) {
   loadUrls(`/fixtures/${params.get('old')}`, `/fixtures/${params.get('new')}`)
     .then(() => { window.viewerReady = true; canvas.focus(); })
-    .catch((e) => { stats.textContent = String(e); });
+    .catch((e) => { say.textContent = String(e); });
 } else window.viewerReady = true;

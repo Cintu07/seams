@@ -1,46 +1,96 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="sage">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>seams viewer</title>
+<title>seams</title>
 <link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=DotGothic16&display=swap">
 <style>
-  :root { --bg: #0d1117; --panel: #141a22; --line: #222b36; --text: #d6dde6; --dim: #8b98a8; --accent: #6aa6f0;
-          --del: #f47067; --ins: #57d38c; color-scheme: dark; }
+  /* colours are set from look.mjs (one table for the canvas and the page) */
+  :root { --page: #b9d5be; --panel: #b1cfb7; --ink: #1b2a21; --soft: #4c6a55; --line: #9fbfa6; --del: #a4432e; --ins: #256f3e;
+          --mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace; --pixel: "DotGothic16", "IBM Plex Mono", monospace; }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
-  body { display: grid; grid-template-rows: auto 1fr; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
-  header b { font-weight: 600; letter-spacing: .02em; }
-  label.file { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); }
-  input[type=file] { color: var(--dim); max-width: 210px; font-size: 12px; }
-  input[type=number] { width: 110px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
-  #stats { margin-left: auto; font: 12px/1.3 "Cascadia Mono", Consolas, monospace; color: var(--dim); white-space: pre; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--page); color: var(--ink); font: 13px/1.5 var(--mono); display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+         transition: background .35s ease, color .35s ease; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  button:focus-visible, canvas:focus-visible { outline: 2px dashed var(--soft); outline-offset: -4px; }
+
+  header { display: flex; align-items: flex-end; gap: 18px; padding: 22px 28px 14px 28px; flex-wrap: wrap; }
+  .title { font-weight: 500; letter-spacing: .08em; text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+  .files { color: var(--soft); font-size: 12px; }
+  #stats { margin-left: auto; text-align: right; font-size: 11.5px; color: var(--soft); white-space: pre; font-variant-numeric: tabular-nums; }
   #stats .del { color: var(--del); } #stats .ins { color: var(--ins); }
-  main { position: relative; min-height: 0; display: grid; grid-template-columns: 1fr 14px; }
-  #view { width: 100%; height: 100%; display: block; outline: none; }
-  #bar { position: relative; background: var(--panel); border-left: 1px solid var(--line); cursor: pointer; }
-  #marks { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #thumb { position: absolute; left: 1px; right: 1px; min-height: 18px; background: rgba(214, 221, 230, .18); border-radius: 3px; }
-  #drop { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 15px; pointer-events: none; text-align: center; }
-  #drop[hidden] { display: none; }
-  #a11y { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  main { position: relative; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 12px; grid-template-rows: minmax(0, 1fr); margin: 0 14px 0 10px; }
+  #view { width: 100%; height: 100%; min-width: 0; min-height: 0; display: block; outline: none; }
+  #bar { position: relative; cursor: pointer; margin: 4px 0; border-radius: 6px; background: var(--panel); }
+  #marks { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 6px; }
+  #thumb { position: absolute; left: 2px; right: 2px; min-height: 20px; border-radius: 5px; background: var(--ink); opacity: .18; transition: opacity .2s; }
+  #bar:hover #thumb { opacity: .3; }
+  #thumb[hidden] { display: none; }
+
+  /* empty state: a pixel city with a clock, like an old weather channel */
+  #empty { position: absolute; inset: 8px 16px 8px 4px; border-radius: 14px; overflow: hidden; display: grid; place-items: start center; }
+  #empty[hidden] { display: none; }
+  #city { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+  .card { position: relative; text-align: center; font-family: var(--pixel); color: var(--sky-ink); text-shadow: 2px 2px 0 var(--sky-glow); padding: 12px; margin-top: 11vh; }
+  .clock { position: absolute; left: 18px; top: 12px; font: 22px var(--pixel); color: var(--sky-ink); text-shadow: 2px 2px 0 var(--sky-glow); }
+  .date { position: absolute; right: 18px; bottom: 12px; font: 16px var(--pixel); color: #fdfbef; text-shadow: 2px 2px 0 rgba(20, 30, 25, .35); }
+  .card h1 { font: 40px/1.2 var(--pixel); margin: 0 0 10px; letter-spacing: .12em; }
+  .card p { font-size: 16px; margin: 6px 0; }
+  .card .hint { font-size: 13px; opacity: .85; }
+  .diamond { font-size: 12px; vertical-align: middle; margin: 0 .5em; }
+
+  /* bottom bar: three pixel buttons, like a phone dock */
+  footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 10px 28px 16px; gap: 12px; }
+  .dock { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 12px; color: var(--ink);
+          transition: transform .15s ease, background .2s; }
+  .dock:hover { background: rgba(255, 255, 255, .22); transform: translateY(-2px); }
+  .dock:active { transform: translateY(1px) scale(.97); }
+  .dock small { font-size: 10.5px; color: var(--soft); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  footer .left { justify-self: start; } footer .right { justify-self: end; }
+  #mascot svg { transition: transform .25s cubic-bezier(.3, 1.6, .5, 1); }
+  #mascot:hover svg { transform: rotate(-6deg) scale(1.06); }
+  #mascot.bounce svg { animation: bounce .5s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes bounce { 0% { transform: translateY(0); } 40% { transform: translateY(-7px); } 100% { transform: translateY(0); } }
+  #say { font-family: var(--pixel); font-size: 12px; color: var(--soft); min-height: 1.3em; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
 <body>
 <header>
-  <b>seams</b>
-  <label class="file">old <input type="file" id="oldFile"></label>
-  <label class="file">new <input type="file" id="newFile"></label>
-  <label class="file">go to row <input type="number" id="goto" min="1"></label>
-  <span id="stats">drop two files, or pick them above</span>
+  <span class="title">SEAMS</span>
+  <span class="files" id="files">no files yet</span>
+  <span id="stats"></span>
 </header>
 <main>
   <canvas id="view" tabindex="0" aria-label="diff view"></canvas>
-  <div id="bar"><canvas id="marks"></canvas><div id="thumb"></div></div>
-  <div id="drop">Drop the old file, then the new file, anywhere on this page.<br>Or open <code>?old=10k.old.ts&amp;new=10k.e100.new.ts</code> to load fixtures.</div>
+  <div id="bar" title="click or drag to scroll; red and green marks are changes"><canvas id="marks"></canvas><div id="thumb" hidden></div></div>
+  <div id="empty">
+    <canvas id="city"></canvas>
+    <div class="clock" id="clock">0:00</div>
+    <div class="card">
+      <h1>seams</h1>
+      <p><span class="diamond">◆</span>drop two files<span class="diamond">◆</span></p>
+      <p class="hint">old one first, then the new one · or tap the pages below</p>
+    </div>
+    <div class="date" id="date"></div>
+  </div>
 </main>
+<footer>
+  <button class="dock left" id="pickOld" title="choose the old file"><span id="oldIcon"></span><small id="oldName">old file</small></button>
+  <div style="display:grid;justify-items:center;gap:2px">
+    <button class="dock" id="mascot" title="switch theme"></button>
+    <span id="say" aria-live="polite">hello</span>
+  </div>
+  <button class="dock right" id="pickNew" title="choose the new file"><span id="newIcon"></span><small id="newName">new file</small></button>
+</footer>
+<input type="file" id="oldFile" class="sr" tabindex="-1">
+<input type="file" id="newFile" class="sr" tabindex="-1">
 <script type="module" src="./app.mjs"></script>
 </body>
 </html>

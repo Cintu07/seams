@@ -45,11 +45,9 @@ void main() {
   outColour = vec4(c.rgb * coverage, coverage);
 }`;
 
-export const PALETTE = {
-  background: '#0d1117', text: '#d6dde6', gutter: '#5d6b7a', gutterChanged: '#8b98a8',
-  deletedRow: '#3a1d22', insertedRow: '#12301f', deletedMark: '#f47067', insertedMark: '#57d38c',
-  deletedText: '#f0d2d0', insertedText: '#d2f0dc', currentRow: '#1b2330', unknown: '#a37be8',
-};
+import { THEMES } from "./look.mjs";
+
+export const PALETTE = THEMES.sage.renderer;
 const COLOUR = Object.fromEntries(Object.keys(PALETTE).map((name, i) => [name, i]));
 
 function hexToRgba(hex) {
@@ -66,7 +64,8 @@ function compile(gl, type, source) {
 }
 
 export class DiffRenderer {
-  constructor(canvas, { fontPx = 13, lineHeight = 1.45, fontFamily = '"Cascadia Mono", "JetBrains Mono", Consolas, monospace' } = {}) {
+  constructor(canvas, { fontPx = 13, lineHeight = 1.75, fontFamily = `"IBM Plex Mono", "Cascadia Mono", Consolas, monospace`, palette = PALETTE } = {}) {
+    this.palette = palette;
     this.canvas = canvas;
     this.font = { fontPx, lineHeight, fontFamily };
     const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
@@ -179,7 +178,7 @@ export class DiffRenderer {
   draw() {
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    const bg = hexToRgba(PALETTE.background);
+    const bg = hexToRgba(this.palette.background);
     gl.clearColor(bg[0], bg[1], bg[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (!this.diff) return 0;
@@ -239,7 +238,7 @@ export class DiffRenderer {
     gl.uniform1f(this.u.rowOffset, (this.scrollRow - first) * this.cell.h);
     gl.uniform1f(this.u.atlasColumns, this.cell.columns);
     gl.uniform2f(this.u.atlasCellUv, this.cell.uvW, this.cell.uvH);
-    gl.uniform4fv(this.u.palette, Object.values(PALETTE).flatMap(hexToRgba));
+    gl.uniform4fv(this.u.palette, Object.keys(PALETTE).flatMap((k) => hexToRgba(this.palette[k])));
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTexture);
     gl.uniform1i(this.u.atlas, 0);
@@ -249,3 +248,7 @@ export class DiffRenderer {
     return n;
   }
 }
+
+// theme changes only touch the palette; fonts change the atlas
+DiffRenderer.prototype.setPalette = function (palette) { this.palette = palette; };
+DiffRenderer.prototype.rebuildAtlas = function () { this.dpr = 0; this.resize(); };
