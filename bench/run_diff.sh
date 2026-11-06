@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One table: seams vs imara-diff vs git diff --no-index on the same pairs, pinned to vCPU 2.
+# One table: seams (native and wasm) vs imara-diff vs git diff --no-index on the same pairs, pinned to vCPU 2.
 # WSL2 cannot guarantee the vCPU runs on a P core of this hybrid CPU.
 # Fixtures come from bench/gen_fixtures.mjs. git runs from /tmp so no repository attributes apply.
 set -e
@@ -13,6 +13,7 @@ for pair in $pairs; do
   echo "== ${pair##*:} ($(( ($(stat -c%s $old) + $(stat -c%s $new)) / 1024 )) KiB)"
   taskset -c 2 ./build/diff_bench "$old" "$new" "$RUNS"
   [ -x "$IMARA" ] && taskset -c 2 "$IMARA" "$old" "$new" "$RUNS"
+  [ -f build/seams.wasm ] && command -v node >/dev/null && taskset -c 2 node bench/wasm_bench.mjs "$old" "$new" "$RUNS"
   start=$(date +%s%N); (cd /tmp && taskset -c 2 git diff --no-index --minimal --stat "$old" "$new" >/dev/null || true); end=$(date +%s%N)
   echo "git diff --no-index --minimal (one run, includes process start) ms=$(( (end - start) / 1000000 ))"
   start=$(date +%s%N); (cd /tmp && taskset -c 2 git diff --no-index --stat "$old" "$new" >/dev/null || true); end=$(date +%s%N)
@@ -25,4 +26,5 @@ if [ -f "$CORPUS/count" ]; then
   echo "== kernel corpus $CORPUS ($(cat "$CORPUS/count") pairs)"
   taskset -c 2 ./build/corpus_bench "$CORPUS" "$RUNS"
   [ -x "$IMARA" ] && taskset -c 2 "$IMARA" --corpus "$CORPUS" "$RUNS"
+  [ -f build/seams.wasm ] && command -v node >/dev/null && taskset -c 2 node bench/wasm_bench.mjs --corpus "$CORPUS" "$RUNS"
 fi

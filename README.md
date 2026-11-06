@@ -1,6 +1,6 @@
 # seams
 
-A line diff and patch engine written in NASM x86-64. A browser core in WAT comes later.
+A line diff and patch engine written in NASM x86-64. The same engine is also hand-written in WebAssembly text (`wasm/seams.wat`) for the browser.
 
 `seams_diff` takes two byte buffers and returns a minimal line edit script. `seams_apply` takes the
 first buffer and that script and rebuilds the second buffer byte for byte, including a missing final
@@ -18,6 +18,19 @@ runs are the gaps between them.
    (middle snake, no heuristics). Output is one `changed` byte per line.
 6. `emit.asm`: turn the changed bytes into change records.
 7. `apply.asm`: copy byte ranges from both buffers and check the script is well formed.
+
+## WebAssembly core
+
+`wasm/seams.wat` is a hand-written port of the same pipeline with simd128 scan and trim. `make wasm`
+builds `build/seams.wasm` (about 5 KB; needs Node). `make test-wasm` checks that its scalar and SIMD
+scripts are identical to the native engine record for record on every harness pair, including the
+kernel corpus when `SEAMS_CORPUS` is set. `wasm/seams.mjs` is a small JS host:
+
+```js
+import { loadSeams } from "./wasm/seams.mjs";
+const seams = await loadSeams(wasmBytes);
+const script = seams.diff(oldBytes, newBytes); // { aStart, bStart, aCount, bCount } as Uint32Arrays
+```
 
 ## Use it
 

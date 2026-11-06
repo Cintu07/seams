@@ -1,0 +1,8 @@
+{
+  "name": "seams-wasm-build",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wabt": "1.0.36"
+  }
+}

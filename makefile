@@ -8,8 +8,8 @@ ENGINE = build/api.o build/scan_lines.o build/hash_lines.o build/intern.o build/
          build/myers.o build/emit.o build/apply.o build/diff.o
 ENGINE_BAD_HASH = $(filter-out build/hash_lines.o,$(ENGINE)) build/hash_lines_bad.o
 
-.PHONY: all test bench clean
-all: build/harness build/diff_harness build/diff_harness_bad_hash build/bench build/diff_bench build/corpus_bench build/seams
+.PHONY: all wasm test test-wasm bench clean
+all: build/harness build/diff_harness build/diff_harness_bad_hash build/bench build/diff_bench build/corpus_bench build/seams build/script_dump
 
 build:
 	mkdir -p build
@@ -55,3 +55,21 @@ clean:
 
 build/corpus_bench: bench/corpus_bench.c ref/ref_diff.c ref/ref_diff.h include/seams.h $(ENGINE)
 	$(CC) $(CFLAGS) bench/corpus_bench.c ref/ref_diff.c $(ENGINE) -o $@
+
+NODE ?= node
+
+build/script_dump: test/script_dump.c include/seams.h $(ENGINE)
+	$(CC) $(CFLAGS) $< $(ENGINE) -o $@
+
+wasm/node_modules: wasm/package.json
+	cd wasm && npm install --silent --no-audit --no-fund
+	touch $@
+
+build/seams.wasm: wasm/seams.wat wasm/layout.mjs wasm/build.mjs wasm/node_modules | build
+	$(NODE) wasm/build.mjs
+
+test-wasm: build/seams.wasm build/script_dump
+	$(NODE) test/wasm_harness.mjs "normal hash" build/seams.wasm
+	SEAMS_FUZZ_PAIRS=10000 $(NODE) test/wasm_harness.mjs "forced collisions" build/seams_bad_hash.wasm
+
+wasm: build/seams.wasm
