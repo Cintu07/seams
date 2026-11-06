@@ -35,5 +35,6 @@ make bench
 - the same checks on a build whose hash is `length & 1`, so every line collides.
 
 `make bench` compares against imara-diff and `git diff --no-index` on generated fixtures. The Rust
-harness is in `bench/imara/`. Today seams is 1.4 to 2 times slower than imara-diff's default Myers on
-sparse edits. Most of that time is hashing and interning, not the diff itself.
+harness is in `bench/imara/`; fixtures come from `bench/gen_fixtures.mjs`. On sparse edits seams is
+level with imara-diff's default Myers from 10k to 1M lines. On dense edits it is 2.5 to 3 times
+slower, because it always returns the minimal script and imara's default gives that up for speed.
