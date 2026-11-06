@@ -13,7 +13,9 @@
 %define SEAMS_U32_BYTES 4
 %define SEAMS_U64_BYTES 8
 %define SEAMS_VECTOR_BYTES 32
-%define SEAMS_EMPTY_SLOT 0xffffffff
+%define SEAMS_EMPTY_SLOT -1
+%define SEAMS_FIRST_ACTIVE_SLOTS 16
+%define SEAMS_MAX_IDS 0xfffffffe
 %define SEAMS_SIDE_A 0
 %define SEAMS_SIDE_B 1
 %define SEAMS_FLAG_AVX2 1
@@ -30,10 +32,11 @@ struc seams_line_table
     .capacity: resq 1
 endstruc
 
-; open addressing table: slot_hash/slot_id per slot, the rest per id
+; open addressing: one u64 per slot (hash high half, id low half), the rest per id
+; only the first active_mask+1 slots are in use; the table doubles at half load
 struc seams_intern
-    .slot_hash: resq 1
-    .slot_id: resq 1
+    .slots: resq 1
+    .id_hash: resq 1
     .id_bytes: resq 1
     .id_len: resq 1
     .id_count_a: resq 1
@@ -41,6 +44,7 @@ struc seams_intern
     .slot_count: resq 1
     .id_capacity: resq 1
     .id_total: resq 1
+    .active_mask: resq 1
 endstruc
 
 ; only changed regions are stored; unchanged runs are the gaps between records

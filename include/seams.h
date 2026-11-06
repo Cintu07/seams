@@ -25,11 +25,12 @@ typedef struct seams_line_table {
     uint64_t capacity;
 } seams_line_table;
 
-/* Shared by both files. slot_count is a power of two greater than id_capacity.
-   id_capacity must be at least the total number of lines in both files. */
+/* Shared by both files. slot_count is a power of two, at least 2 * id_capacity.
+   id_capacity must be at least the total number of lines in both files.
+   Only a small prefix of slots is used at first; it doubles as ids are added. */
 typedef struct seams_intern {
-    uint64_t *slot_hash;
-    uint32_t *slot_id;
+    uint64_t *slots;
+    uint64_t *id_hash;
     const uint8_t **id_bytes;
     uint32_t *id_len;
     uint32_t *id_count_a;
@@ -37,6 +38,7 @@ typedef struct seams_intern {
     uint64_t slot_count;
     uint64_t id_capacity;
     uint64_t id_total;
+    uint64_t active_mask;
 } seams_intern;
 
 /* Edit script: only changed regions. Lines between records are unchanged and

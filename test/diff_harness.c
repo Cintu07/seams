@@ -52,9 +52,9 @@ static int run_diff(diff_run *run, const uint8_t *a, uint64_t a_len, const uint8
     line_table(run, &run->a_lines, na);
     line_table(run, &run->b_lines, nb);
     uint64_t slots = 16;
-    while (slots <= 2 * (na + nb)) slots *= 2;
+    while (slots < 2 * (na + nb)) slots *= 2;
     run->intern = (seams_intern){
-        .slot_hash = block(run, slots, 8), .slot_id = block(run, slots, 4),
+        .slots = block(run, slots, 8), .id_hash = block(run, na + nb, 8),
         .id_bytes = block(run, na + nb, 8), .id_len = block(run, na + nb, 4),
         .id_count_a = block(run, na + nb, 4), .id_count_b = block(run, na + nb, 4),
         .slot_count = slots, .id_capacity = na + nb};
