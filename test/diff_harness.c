@@ -115,9 +115,17 @@ static int apply_run(const diff_run *run, const uint8_t *a, uint64_t a_len, cons
     return status;
 }
 
+/* The batch hash takes shortcuts near line ends; it must agree with the one-line hash. */
+static int hashes_match(const seams_line_table *t, const uint8_t *bytes) {
+    for (uint64_t i = 0; i < t->count; ++i)
+        if (t->line_hash[i] != seams_hash_line(bytes + t->line_start[i], t->line_len[i])) return 0;
+    return 1;
+}
+
 static void check_pair(const uint8_t *a, uint64_t a_len, const uint8_t *b, uint64_t b_len) {
     diff_run run;
     if (run_diff(&run, a, a_len, b, b_len, 0) != SEAMS_OK) fail("scalar diff status", a, a_len, b, b_len);
+    if (!hashes_match(&run.a_lines, a) || !hashes_match(&run.b_lines, b)) fail("batch hash differs", a, a_len, b, b_len);
     check_script_shape(&run, a, a_len, b, b_len);
     const int64_t expected = ref_edit_distance(a, a_len, b, b_len);
     if ((int64_t)edit_size(&run.script) != expected) fail("not minimal", a, a_len, b, b_len);

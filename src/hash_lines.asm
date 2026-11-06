@@ -8,14 +8,22 @@ global seams_hash_line:function
 global seams_hash_lines:function
 global seams_count_lines:function
 
+seams_hash_line:
+    ; no bytes past the line are known to exist, so short tails go byte by byte
+    lea rdx, [rdi + rsi]
+    jmp seams_hash_line_in_buffer
+
+; same value as gathering the tail byte by byte; loads stay below buffer_end
 %define cursor rdi
 %define remaining rsi
+%define buffer_end rdx
 %define hash rax
-%define word rdx
-%define multiplier r8
-%define tail_byte r9
-%define tail_shift rcx
-seams_hash_line:
+%define word r8
+%define multiplier r9
+%define shift rcx
+%define line_length r10
+%define tail_byte r11
+seams_hash_line_in_buffer:
     mov hash, remaining
 %ifdef SEAMS_BAD_HASH
     ; test build: almost every line collides, so intern must compare bytes
@@ -23,6 +31,7 @@ seams_hash_line:
     ret
 %endif
     mov multiplier, SEAMS_HASH_MULTIPLIER
+    mov line_length, remaining
 .next_word:
     cmp remaining, SEAMS_U64_BYTES
     jb .words_hashed
@@ -35,17 +44,34 @@ seams_hash_line:
     jmp .next_word
 .words_hashed:
     xor word, word
-    xor tail_shift, tail_shift
-.next_tail_byte:
     test remaining, remaining
     jz .tail_gathered
+    lea shift, [remaining * 8 - 64]
+    neg shift
+    cmp line_length, SEAMS_U64_BYTES
+    jb .short_line
+    ; the last eight bytes of the line; drop the ones already hashed
+    mov word, [cursor + remaining - SEAMS_U64_BYTES]
+    shr word, cl
+    jmp .tail_gathered
+.short_line:
+    lea tail_byte, [cursor + SEAMS_U64_BYTES]
+    cmp tail_byte, buffer_end
+    ja .gather_tail_bytes
+    mov word, [cursor]
+    shl word, cl
+    shr word, cl
+    jmp .tail_gathered
+.gather_tail_bytes:
+    xor shift, shift
+.next_tail_byte:
     movzx tail_byte, byte [cursor]
     shl tail_byte, cl
     or word, tail_byte
     inc cursor
+    add shift, 8
     dec remaining
-    add tail_shift, 8
-    jmp .next_tail_byte
+    jnz .next_tail_byte
 .tail_gathered:
     xor hash, word
     imul hash, multiplier
@@ -55,11 +81,13 @@ seams_hash_line:
     ret
 %undef cursor
 %undef remaining
+%undef buffer_end
 %undef hash
 %undef word
 %undef multiplier
+%undef shift
+%undef line_length
 %undef tail_byte
-%undef tail_shift
 
 %define bytes r12
 %define starts r13
@@ -89,13 +117,20 @@ seams_hash_lines:
     jz .return_status
     test hashes, SEAMS_ALIGNMENT - 1
     jnz .return_status
+    ; the last line ends where the buffer ends, so loads below that point are safe
+    mov eax, [starts + line_count * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
+    mov ecx, [lengths + line_count * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
+    add rax, rcx
+    add rax, bytes
+    mov [rsp], rax
 .next_line:
     cmp line, line_count
     jae .all_lines_hashed
     mov edi, [starts + line * SEAMS_U32_BYTES]
     add rdi, bytes
     mov esi, [lengths + line * SEAMS_U32_BYTES]
-    call seams_hash_line
+    mov rdx, [rsp]
+    call seams_hash_line_in_buffer
     mov [hashes + line * SEAMS_U64_BYTES], rax
     inc line
     jmp .next_line
