@@ -9,7 +9,7 @@ ENGINE = build/api.o build/scan_lines.o build/hash_lines.o build/intern.o build/
 ENGINE_BAD_HASH = $(filter-out build/hash_lines.o,$(ENGINE)) build/hash_lines_bad.o
 
 .PHONY: all test bench clean
-all: build/harness build/diff_harness build/diff_harness_bad_hash build/bench build/diff_bench build/corpus_bench
+all: build/harness build/diff_harness build/diff_harness_bad_hash build/bench build/diff_bench build/corpus_bench build/seams
 
 build:
 	mkdir -p build
@@ -39,6 +39,9 @@ test: build/harness build/diff_harness build/diff_harness_bad_hash
 	./build/harness
 	./build/diff_harness "normal hash"
 	SEAMS_FUZZ_PAIRS=20000 ./build/diff_harness_bad_hash "forced collisions"
+
+build/seams: tools/seams.c include/seams.h $(ENGINE)
+	$(CC) $(CFLAGS) $< $(ENGINE) -o $@
 
 build/diff_bench: bench/diff_bench.c include/seams.h $(ENGINE)
 	$(CC) $(CFLAGS) $< $(ENGINE) -o $@

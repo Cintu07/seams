@@ -1,0 +1,207 @@
+#define _GNU_SOURCE
+/* seams: unified diff of two files, computed by the assembly engine.
+     seams [options] old new
+       -U n       context lines (default 3)
+       -L label   name for old, then new, in the --- / +++ header (may be given twice)
+       --stat     print only the insertion/deletion counts
+       --time     print the time spent in seams_diff to stderr
+       --color    colour output (default: when stdout is a terminal), --no-color to turn off
+   Exit status: 0 same, 1 different, 2 trouble (like diff). */
+#include "seams.h"
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+/* anonymous pages arrive zeroed and page aligned, and only pages the engine touches cost anything */
+static void *aligned(uint64_t elements, size_t size) {
+    const size_t bytes = (size_t)(elements ? elements : 1) * size;
+    void *p = mmap(0, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (p == MAP_FAILED) { fputs("seams: out of memory\n", stderr); exit(2); }
+    return p;
+}
+
+/* same count as seams_count_lines, using glibc's vectorised memchr */
+static uint64_t count_lines(const uint8_t *p, uint64_t len) {
+    if (len == 0) return 0;
+    uint64_t lines = 0;
+    const uint8_t *end = p + len;
+    while ((p = memchr(p, '\n', (size_t)(end - p))) != 0) {
+        ++lines;
+        if (++p == end) return lines;
+    }
+    return lines + 1;
+}
+
+/* maps regular files; reads anything else (pipes, /dev/null) to EOF */
+static uint8_t *read_all(const char *path, uint64_t *length) {
+    struct stat st;
+    if (strcmp(path, "-") != 0 && stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
+        if ((uint64_t)st.st_size > SEAMS_MAX_BYTES) { fprintf(stderr, "seams: %s is larger than 4 GiB\n", path); exit(2); }
+        const int fd = open(path, O_RDONLY);
+        if (fd < 0) { perror(path); exit(2); }
+        void *p = mmap(0, (size_t)st.st_size, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
+        close(fd);
+        if (p == MAP_FAILED) { perror(path); exit(2); }
+        *length = (uint64_t)st.st_size;
+        return p;
+    }
+    FILE *f = strcmp(path, "-") == 0 ? stdin : fopen(path, "rb");
+    if (!f) { perror(path); exit(2); }
+    size_t cap = 1 << 16, len = 0;
+    uint8_t *p = malloc(cap);
+    for (;;) {
+        if (len == cap) p = realloc(p, cap *= 2);
+        const size_t got = fread(p + len, 1, cap - len, f);
+        if (got == 0) break;
+        len += got;
+    }
+    if (ferror(f)) { perror(path); exit(2); }
+    if (f != stdin) fclose(f);
+    if (len > SEAMS_MAX_BYTES) { fprintf(stderr, "seams: %s is larger than 4 GiB\n", path); exit(2); }
+    *length = len;
+    return p;
+}
+
+static double now_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
+}
+
+typedef struct {
+    const uint8_t *bytes;
+    const seams_line_table *t;
+} side;
+
+static int colour;
+#define RED "\033[31m"
+#define GREEN "\033[32m"
+#define CYAN "\033[36m"
+#define BOLD "\033[1m"
+#define RESET "\033[0m"
+
+static void put_line(char mark, const side *s, uint64_t line) {
+    const uint8_t *p = s->bytes + s->t->line_start[line];
+    const uint32_t len = s->t->line_len[line];
+    const int has_lf = len > 0 && p[len - 1] == '\n';
+    if (colour && mark != ' ') fputs(mark == '-' ? RED : GREEN, stdout);
+    putchar(mark);
+    fwrite(p, 1, len - has_lf, stdout);
+    if (colour && mark != ' ') fputs(RESET, stdout);
+    putchar('\n');
+    if (!has_lf) puts("\\ No newline at end of file");
+}
+
+/* unified format: an empty range is written as the line before it */
+static void range(uint64_t start, uint64_t count) {
+    printf("%" PRIu64, count ? start + 1 : start);
+    if (count != 1) printf(",%" PRIu64, count);
+}
+
+static void print_unified(const side *a, const side *b, const seams_script *s, uint64_t context) {
+    const uint64_t na = a->t->count, nb = b->t->count;
+    uint64_t r = 0;
+    while (r < s->count) {
+        /* records closer than 2 * context share one hunk */
+        uint64_t last = r;
+        while (last + 1 < s->count &&
+               s->a_start[last + 1] - (s->a_start[last] + (uint64_t)s->a_count[last]) <= 2 * context)
+            ++last;
+        const uint64_t lead = s->a_start[r] < context ? s->a_start[r] : context;
+        const uint64_t a0 = s->a_start[r] - lead, b0 = s->b_start[r] - lead;
+        const uint64_t a_end_change = s->a_start[last] + (uint64_t)s->a_count[last];
+        const uint64_t b_end_change = s->b_start[last] + (uint64_t)s->b_count[last];
+        uint64_t trail = na - a_end_change;
+        if (nb - b_end_change < trail) trail = nb - b_end_change;
+        if (trail > context) trail = context;
+        const uint64_t a1 = a_end_change + trail, b1 = b_end_change + trail;
+        if (colour) fputs(CYAN, stdout);
+        fputs("@@ -", stdout);
+        range(a0, a1 - a0);
+        fputs(" +", stdout);
+        range(b0, b1 - b0);
+        fputs(" @@", stdout);
+        if (colour) fputs(RESET, stdout);
+        putchar('\n');
+        uint64_t ai = a0;
+        for (uint64_t k = r; k <= last; ++k) {
+            while (ai < s->a_start[k]) put_line(' ', a, ai++);
+            for (uint64_t i = 0; i < s->a_count[k]; ++i) put_line('-', a, ai++);
+            for (uint64_t i = 0; i < s->b_count[k]; ++i) put_line('+', b, s->b_start[k] + i);
+        }
+        while (ai < a1) put_line(' ', a, ai++);
+        r = last + 1;
+    }
+}
+
+static void usage(void) {
+    fputs("usage: seams [-U n] [-L label] [--stat] [--time] [--color|--no-color] old new\n", stderr);
+    exit(2);
+}
+
+int main(int argc, char **argv) {
+    uint64_t context = 3;
+    const char *label[2] = {0, 0}, *path[2] = {0, 0};
+    int labels = 0, paths = 0, stat = 0, timing = 0;
+    colour = isatty(STDOUT_FILENO);
+    for (int i = 1; i < argc; ++i) {
+        const char *x = argv[i];
+        if (strcmp(x, "-U") == 0 && i + 1 < argc) context = strtoull(argv[++i], 0, 10);
+        else if (strncmp(x, "-U", 2) == 0 && x[2]) context = strtoull(x + 2, 0, 10);
+        else if (strcmp(x, "-L") == 0 && i + 1 < argc && labels < 2) label[labels++] = argv[++i];
+        else if (strcmp(x, "--stat") == 0) stat = 1;
+        else if (strcmp(x, "--time") == 0) timing = 1;
+        else if (strcmp(x, "--color") == 0) colour = 1;
+        else if (strcmp(x, "--no-color") == 0) colour = 0;
+        else if (x[0] == '-' && x[1]) usage();
+        else if (paths < 2) path[paths++] = x;
+        else usage();
+    }
+    if (paths != 2) usage();
+    static char buf[1 << 20];
+    setvbuf(stdout, buf, _IOFBF, sizeof buf);
+
+    uint64_t a_len, b_len;
+    uint8_t *a = read_all(path[0], &a_len), *b = read_all(path[1], &b_len);
+    const double t0 = now_ms();
+    const uint64_t na = count_lines(a, a_len), nb = count_lines(b, b_len), ids = na + nb;
+    seams_line_table ta = {aligned(na, 4), aligned(na, 4), aligned(na, 8), aligned(na, 4), 0, na};
+    seams_line_table tb = {aligned(nb, 4), aligned(nb, 4), aligned(nb, 8), aligned(nb, 4), 0, nb};
+    uint64_t slots = 16;
+    while (slots < 2 * ids) slots *= 2;
+    seams_intern intern = {aligned(slots, 8), aligned(ids, 8), aligned(ids, 8), aligned(ids, 4),
+                           aligned(ids, 4), aligned(ids, 4), slots, ids, 0, 0};
+    seams_diff_scratch scratch = {&intern, aligned(na, 4), aligned(nb, 4), aligned(na, 4), aligned(nb, 4),
+                                  aligned(na, 1), aligned(nb, 1), aligned(ids + 3, 8), aligned(ids + 3, 8), ids + 3};
+    const uint64_t records = (na < nb ? na : nb) + 1;
+    seams_script script = {aligned(records, 4), aligned(records, 4), aligned(records, 4), aligned(records, 4), 0, records};
+    const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
+    seams_diff_input in = {a, a_len, b, b_len, &ta, &tb, avx2 ? SEAMS_FLAG_AVX2 : 0};
+    const double t1 = now_ms();
+    const int status = seams_diff(&in, &scratch, &script);
+    const double t2 = now_ms();
+    if (status != SEAMS_OK) { fprintf(stderr, "seams: diff failed (%d)\n", status); return 2; }
+
+    uint64_t deleted = 0, inserted = 0;
+    for (uint64_t r = 0; r < script.count; ++r) { deleted += script.a_count[r]; inserted += script.b_count[r]; }
+    if (stat) {
+        printf("%" PRIu64 " lines -> %" PRIu64 " lines: %" PRIu64 " insertions(+), %" PRIu64 " deletions(-)\n",
+               na, nb, inserted, deleted);
+    } else if (script.count) {
+        if (colour) fputs(BOLD, stdout);
+        printf("--- %s\n+++ %s\n", label[0] ? label[0] : path[0], label[1] ? label[1] : path[1]);
+        if (colour) fputs(RESET, stdout);
+        const side sa = {a, &ta}, sb = {b, &tb};
+        print_unified(&sa, &sb, &script, context);
+    }
+    fflush(stdout);
+    if (timing)
+        fprintf(stderr, "seams_diff: %.2f ms for %" PRIu64 " + %" PRIu64 " lines (setup %.2f ms)\n", t2 - t1, na, nb, t1 - t0);
+    return script.count ? 1 : 0;
+}
