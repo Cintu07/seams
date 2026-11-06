@@ -9,8 +9,9 @@ global seams_compare_box:function hidden
 extern seams_common_prefix
 extern seams_common_suffix
 
-; lines whose id never occurs in the other file cannot be in any common subsequence
-%define table rdi
+; lines whose id never occurs in the other file cannot be in any common subsequence.
+; ids and changed point at the first line to sort; map gets indexes relative to it.
+%define ids rdi
 %define other_counts rsi
 %define work rdx
 %define map rcx
@@ -19,14 +20,14 @@ extern seams_common_suffix
 %define id r10
 %define id32 r10d
 %define line32 r9d
-%define ids r11
+%define line_count r11
 %define kept rax
 seams_discard:
+    mov line_count, r9
     xor kept, kept
     xor line, line
-    mov ids, [table + seams_line_table.line_id]
 .next_line:
-    cmp line, [table + seams_line_table.count]
+    cmp line, line_count
     jae .all_lines_sorted
     mov id32, [ids + line * SEAMS_U32_BYTES]
     cmp dword [other_counts + id * SEAMS_U32_BYTES], 0
@@ -43,7 +44,7 @@ seams_discard:
     jmp .next_line
 .all_lines_sorted:
     ret
-%undef table
+%undef ids
 %undef other_counts
 %undef work
 %undef map
@@ -52,7 +53,7 @@ seams_discard:
 %undef id
 %undef id32
 %undef line32
-%undef ids
+%undef line_count
 %undef kept
 
 %define map rdi

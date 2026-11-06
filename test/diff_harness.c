@@ -121,8 +121,11 @@ static int apply_run(const diff_run *run, const uint8_t *a, uint64_t a_len, cons
     return status;
 }
 
-/* The batch hash takes shortcuts near line ends; it must agree with the one-line hash. */
-static int hashes_match(const seams_line_table *t, const uint8_t *bytes) {
+/* The batch hash takes shortcuts near line ends; it must agree with the one-line hash.
+   seams_diff hashes only the lines between the common prefix and suffix, so the
+   whole table is hashed again here. */
+static int hashes_match(seams_line_table *t, const uint8_t *bytes) {
+    if (seams_hash_lines(bytes, t) != SEAMS_OK) return 0;
     for (uint64_t i = 0; i < t->count; ++i)
         if (t->line_hash[i] != seams_hash_line(bytes + t->line_start[i], t->line_len[i])) return 0;
     return 1;
@@ -184,6 +187,20 @@ static void check_edge_cases(void) {
     check_strings("line one\n", "line onf\n");
     check_strings("abcabba", "cbabac");
     check_strings("a\nb\nc\na\nb\nb\na\n", "c\nb\na\nb\na\nc\n");
+    /* byte prefix/suffix trimming: equal bytes that are not whole lines on both sides */
+    check_strings("ba\n", "a\n");
+    check_strings("a\n", "ba\n");
+    check_strings("x\nba\n", "x\na\n");
+    check_strings("abc", "abc\n");
+    check_strings("abc\n", "abc");
+    check_strings("abc", "abcdef");
+    check_strings("same\nabc", "same\nabcdef");
+    check_strings("same\n", "same\nsame\n");
+    check_strings("same\nsame\n", "same\n");
+    check_strings("p\nq\nlong shared tail line\n", "p\nr\nlong shared tail line\n");
+    check_strings("0123456789abcdef\nmid\n0123456789abcdef\n", "0123456789abcdef\nMID\n0123456789abcdef\n");
+    check_strings("0123456\n89abcdef\n", "0123456\n89abcdeF\n");
+    check_strings("Xbcdefgh\nijklmnop\n", "abcdefgh\nijklmnop\n");
     const uint8_t nul_a[] = {'a', 0, 'b', '\n', 0, '\n', 'c'};
     const uint8_t nul_b[] = {'a', 0, 'c', '\n', 0, '\n', 'c'};
     check_pair(nul_a, sizeof nul_a, nul_b, sizeof nul_b);

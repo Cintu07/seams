@@ -109,8 +109,10 @@ int seams_hash_lines(const uint8_t *bytes, seams_line_table *lines);
 int seams_intern_reset(seams_intern *intern);
 int seams_intern_lines(const uint8_t *bytes, seams_line_table *lines, seams_intern *intern, int side);
 
-/* Fills a_lines, b_lines (all four columns) and the script. Minimal: the sum of
-   a_count + b_count over all records is the smallest possible. */
+/* Fills the script, and line_start/line_len of a_lines and b_lines. Lines inside the
+   common byte prefix and suffix of the two files are left out of hashing and
+   interning, so their line_hash and line_id entries are not written. Minimal: the
+   sum of a_count + b_count over all records is the smallest possible. */
 int seams_diff(const seams_diff_input *in, seams_diff_scratch *scratch, seams_script *out);
 
 /* Writes b into out using a, b's line table and the script. Validates the script. */

@@ -7,6 +7,7 @@ section .text
 global seams_intern_reset:function
 global seams_intern_lines:function
 global seams_bytes_equal:function hidden
+global seams_intern_line_range:function hidden
 
 %define intern rdi
 %define slots rsi
@@ -262,10 +263,23 @@ seams_intern_store_id:
 %define intern r14
 %define side_counts r15
 %define line rbx
+%define end_line rbp
 %define column rcx
 %define status eax
 seams_intern_lines:
-    save_registers rbx, r12, r13, r14, r15
+    mov status, SEAMS_EINVAL
+    test rsi, rsi
+    jz .no_table
+    xor r8d, r8d
+    mov r9, [rsi + seams_line_table.count]
+    jmp seams_intern_line_range
+.no_table:
+    ret
+
+; interns lines first .. end-1 (r8, r9) and counts them for this side
+seams_intern_line_range:
+    save_registers rbx, rbp, r12, r13, r14, r15
+    sub rsp, 8
     mov status, SEAMS_EINVAL
     test rsi, rsi
     jz .return_status
@@ -279,9 +293,10 @@ seams_intern_lines:
     je .side_chosen
     mov side_counts, [intern + seams_intern.id_count_b]
 .side_chosen:
-    xor line, line
+    mov line, r8
+    mov end_line, r9
 .next_line:
-    cmp line, [table + seams_line_table.count]
+    cmp line, end_line
     jae .all_lines_interned
     mov rdi, intern
     mov column, [table + seams_line_table.line_start]
@@ -305,13 +320,15 @@ seams_intern_lines:
 .all_lines_interned:
     mov status, SEAMS_OK
 .return_status:
-    restore_registers rbx, r12, r13, r14, r15
+    add rsp, 8
+    restore_registers rbx, rbp, r12, r13, r14, r15
     ret
 %undef bytes
 %undef table
 %undef intern
 %undef side_counts
 %undef line
+%undef end_line
 %undef column
 %undef status
 

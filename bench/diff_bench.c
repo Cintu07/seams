@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
     const uint64_t na = seams_count_lines(a, a_len), nb = seams_count_lines(b, b_len);
     engine e;
     setup(&e, na, nb);
-    double total[64], prepare[64], scan[64], hash[64], intern[64];
+    double total[64], scan[64];
     const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
     for (int mode = 0; mode <= avx2; ++mode) {
         uint64_t edits = 0;
@@ -85,25 +85,13 @@ int main(int argc, char **argv) {
             t0 = now_ms();
             (mode ? seams_scan_avx2 : seams_scan_scalar)(a, a_len, &e.a);
             (mode ? seams_scan_avx2 : seams_scan_scalar)(b, b_len, &e.b);
-            const double t1 = now_ms();
-            seams_hash_lines(a, &e.a);
-            seams_hash_lines(b, &e.b);
-            const double t2 = now_ms();
-            seams_intern_reset(&e.intern);
-            seams_intern_lines(a, &e.a, &e.intern, 0);
-            seams_intern_lines(b, &e.b, &e.intern, 1);
-            const double t3 = now_ms();
-            scan[r] = t1 - t0;
-            hash[r] = t2 - t1;
-            intern[r] = t3 - t2;
-            prepare[r] = t3 - t0;
+            scan[r] = now_ms() - t0;
         }
         for (uint64_t i = 0; i < e.script.count; ++i) edits += e.script.a_count[i] + (uint64_t)e.script.b_count[i];
-        const double t = median(total, runs), p = median(prepare, runs);
-        printf("seams %s median_ms=%.3f prepare_ms=%.3f match_ms=%.3f MB/s=%.0f lines/s=%.2fM records=%" PRIu64 " edits=%" PRIu64 "\n",
-               mode ? "avx2-scan" : "scalar", t, p, t - p, (a_len + b_len) / 1e3 / t, (na + nb) / 1e3 / t, e.script.count, edits);
-        printf("      stages scan_ms=%.3f hash_ms=%.3f intern_ms=%.3f distinct=%" PRIu64 "\n",
-               median(scan, runs), median(hash, runs), median(intern, runs), e.intern.id_total);
+        const double t = median(total, runs), s = median(scan, runs);
+        // seams_diff hashes, interns and matches only the lines between the common prefix and suffix
+        printf("seams %s median_ms=%.3f scan_ms=%.3f after_scan_ms=%.3f MB/s=%.0f lines/s=%.2fM records=%" PRIu64 " edits=%" PRIu64 "\n",
+               mode ? "avx2-scan" : "scalar", t, s, t - s, (a_len + b_len) / 1e3 / t, (na + nb) / 1e3 / t, e.script.count, edits);
     }
     return 0;
 }

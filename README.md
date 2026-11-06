@@ -10,12 +10,14 @@ runs are the gaps between them.
 ## Pipeline
 
 1. `scan_lines.asm`: find line starts and lengths. Scalar and AVX2 versions give identical tables.
-2. `hash_lines.asm`: 64-bit hash per line.
-3. `intern.asm`: map each distinct line to a dense id (open addressing, bytes compared on every hash match).
-4. `myers.asm`: drop lines that never occur on the other side, then exact linear-space Myers
+2. `trim.asm`: find the longest common byte prefix and suffix and round them to whole lines.
+   Those lines pair up in any minimal script, so the next steps only see the lines between them.
+3. `hash_lines.asm`: 64-bit hash per remaining line.
+4. `intern.asm`: map each distinct line to a dense id (open addressing, bytes compared on every hash match).
+5. `myers.asm`: drop lines that never occur on the other side, then exact linear-space Myers
    (middle snake, no heuristics). Output is one `changed` byte per line.
-5. `emit.asm`: turn the changed bytes into change records.
-6. `apply.asm`: copy byte ranges from both buffers and check the script is well formed.
+6. `emit.asm`: turn the changed bytes into change records.
+7. `apply.asm`: copy byte ranges from both buffers and check the script is well formed.
 
 ## Build
 
@@ -34,7 +36,13 @@ make bench
   textbook Myers, script shape, and scalar/AVX2 agreement;
 - the same checks on a build whose hash is `length & 1`, so every line collides.
 
-`make bench` compares against imara-diff and `git diff --no-index` on generated fixtures. The Rust
-harness is in `bench/imara/`; fixtures come from `bench/gen_fixtures.mjs`. On sparse edits seams is
-level with imara-diff's default Myers from 10k to 1M lines. On dense edits it is 2.5 to 3 times
+`make bench` compares against imara-diff and `git diff --no-index` on generated fixtures, then on a
+corpus of real edits: 3,000 old/new pairs of `.c` and `.h` files from Linux kernel commits, pulled
+with `bench/data/pull_pairs.sh`. The Rust harness is in `bench/imara/`; fixtures come from
+`bench/gen_fixtures.mjs`.
+
+On the kernel corpus seams takes 166 ms against 319 ms for imara-diff's default Myers, and its
+scripts are 188 edits shorter in total. Most real edits leave long identical stretches at both ends
+of a file; seams skips them before hashing. On generated files with sparse edits it is level with or
+faster than imara. On dense edits (10,000 changes spread through the file) it is 2.2 to 2.7 times
 slower, because it always returns the minimal script and imara's default gives that up for speed.

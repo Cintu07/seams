@@ -7,6 +7,7 @@ section .text
 global seams_hash_line:function
 global seams_hash_lines:function
 global seams_count_lines:function
+global seams_hash_line_range:function hidden
 
 seams_hash_line:
     ; no bytes past the line are known to exist, so short tails go byte by byte
@@ -94,37 +95,46 @@ seams_hash_line_in_buffer:
 %define lengths r14
 %define hashes r15
 %define line rbx
-%define line_count rbp
+%define end_line rbp
 %define table rsi
 %define status eax
 seams_hash_lines:
-    save_registers rbx, rbp, r12, r13, r14, r15
-    sub rsp, 8
     mov status, SEAMS_EINVAL
     test table, table
-    jz .return_status
+    jz .no_table
+    xor edx, edx
+    mov rcx, [table + seams_line_table.count]
+    jmp seams_hash_line_range
+.no_table:
+    ret
+
+; hashes lines first .. end-1 (rdx, rcx); every line of the table must be scanned
+seams_hash_line_range:
+    save_registers rbx, rbp, r12, r13, r14, r15
+    sub rsp, 8
     mov bytes, rdi
-    mov line_count, [table + seams_line_table.count]
+    mov line, rdx
+    mov end_line, rcx
     mov starts, [table + seams_line_table.line_start]
     mov lengths, [table + seams_line_table.line_len]
     mov hashes, [table + seams_line_table.line_hash]
-    xor line, line
     mov status, SEAMS_OK
-    test line_count, line_count
-    jz .return_status
+    cmp line, end_line
+    jae .return_status
     mov status, SEAMS_EINVAL
     test hashes, hashes
     jz .return_status
     test hashes, SEAMS_ALIGNMENT - 1
     jnz .return_status
     ; the last line ends where the buffer ends, so loads below that point are safe
-    mov eax, [starts + line_count * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
-    mov ecx, [lengths + line_count * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
+    mov rax, [table + seams_line_table.count]
+    mov ecx, [lengths + rax * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
+    mov eax, [starts + rax * SEAMS_U32_BYTES - SEAMS_U32_BYTES]
     add rax, rcx
     add rax, bytes
     mov [rsp], rax
 .next_line:
-    cmp line, line_count
+    cmp line, end_line
     jae .all_lines_hashed
     mov edi, [starts + line * SEAMS_U32_BYTES]
     add rdi, bytes
@@ -145,7 +155,7 @@ seams_hash_lines:
 %undef lengths
 %undef hashes
 %undef line
-%undef line_count
+%undef end_line
 %undef table
 %undef status
 
