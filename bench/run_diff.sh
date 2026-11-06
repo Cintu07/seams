@@ -18,3 +18,11 @@ for pair in $pairs; do
   start=$(date +%s%N); (cd /tmp && taskset -c 2 git diff --no-index --stat "$old" "$new" >/dev/null || true); end=$(date +%s%N)
   echo "git diff --no-index default myers (one run, includes process start) ms=$(( (end - start) / 1000000 ))"
 done
+
+# Real pairs from kernel history: bench/data/pull_pairs.sh <linux checkout> "$CORPUS"
+CORPUS=${SEAMS_CORPUS:-$HOME/work/kernel_pairs}
+if [ -f "$CORPUS/count" ]; then
+  echo "== kernel corpus $CORPUS ($(cat "$CORPUS/count") pairs)"
+  taskset -c 2 ./build/corpus_bench "$CORPUS" "$RUNS"
+  [ -x "$IMARA" ] && taskset -c 2 "$IMARA" --corpus "$CORPUS" "$RUNS"
+fi
