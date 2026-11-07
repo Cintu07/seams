@@ -55,6 +55,17 @@ function layoutSplit(script, na, nb) {
   return { left, right, aLine, bLine, aRow, bRow };
 }
 
+// A changed line usually has a counterpart: the k-th deleted line of a change against its k-th inserted
+// line. Those pairs get word-level highlighting. pairA[a] is the new line paired with old line a, or -1.
+function pairLines(script, na, nb) {
+  const pairA = new Int32Array(na).fill(-1), pairB = new Int32Array(nb).fill(-1);
+  for (let r = 0; r < script.count; ++r) {
+    const n = Math.min(script.aCount[r], script.bCount[r]);
+    for (let k = 0; k < n; ++k) { pairA[script.aStart[r] + k] = script.bStart[r] + k; pairB[script.bStart[r] + k] = script.aStart[r] + k; }
+  }
+  return { pairA, pairB };
+}
+
 self.onmessage = async ({ data: { id, a, b, lang } }) => {
   const seams = await ready;
   const t0 = performance.now();
@@ -63,6 +74,7 @@ self.onmessage = async ({ data: { id, a, b, lang } }) => {
   const tables = seams.lineTables();
   const rows = layoutUnified(script, script.aLines, script.bLines);
   const split = layoutSplit(script, script.aLines, script.bLines);
+  const pairs = pairLines(script, script.aLines, script.bLines);
   const t2 = performance.now();
   let deleted = 0, inserted = 0;
   for (let r = 0; r < script.count; ++r) { deleted += script.aCount[r]; inserted += script.bCount[r]; }
@@ -72,8 +84,8 @@ self.onmessage = async ({ data: { id, a, b, lang } }) => {
   const transfer = [a, b,
     rows.kind.buffer, rows.aLine.buffer, rows.bLine.buffer, rows.aRow.buffer, rows.bRow.buffer,
     split.left.buffer, split.right.buffer, split.aLine.buffer, split.bLine.buffer, split.aRow.buffer, split.bRow.buffer,
-    tables.aStart.buffer, tables.aLen.buffer, tables.bStart.buffer, tables.bLen.buffer];
-  self.postMessage({ id, a, b, tables, rows, split, deleted, inserted, records: script.count,
+    tables.aStart.buffer, tables.aLen.buffer, tables.bStart.buffer, tables.bLen.buffer, pairs.pairA.buffer, pairs.pairB.buffer];
+  self.postMessage({ id, a, b, tables, rows, split, pairs, deleted, inserted, records: script.count,
     timing: { diff: t1 - t0, layout: t2 - t1 } }, transfer);
   // second message, after the first frame is on its way: where block comments and multi-line strings
   // begin and end, so any line can be lexed on its own

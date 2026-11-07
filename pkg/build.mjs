@@ -12,7 +12,7 @@ mkdirSync(dist, { recursive: true });
 
 const files = {
   'web/embed.mjs': 'index.mjs', 'web/renderer.mjs': 'renderer.mjs', 'web/interact.mjs': 'interact.mjs',
-  'web/lex.mjs': 'lex.mjs', 'web/look.mjs': 'look.mjs', 'web/diff_worker.mjs': 'diff_worker.mjs',
+  'web/lex.mjs': 'lex.mjs', 'web/words.mjs': 'words.mjs', 'web/look.mjs': 'look.mjs', 'web/diff_worker.mjs': 'diff_worker.mjs',
   'wasm/seams.mjs': 'seams.mjs', 'wasm/layout.mjs': 'layout.mjs',
 };
 for (const [from, to] of Object.entries(files)) {

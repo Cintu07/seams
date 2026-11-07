@@ -5,7 +5,10 @@
 const ROW_DELETED = 1, ROW_INSERTED = 2, ROW_EMPTY = 3;
 const FIRST_GLYPH = 32, LAST_GLYPH = 126;
 // atlas cells after the printable ASCII range
-const SOLID = LAST_GLYPH + 1, UNKNOWN = LAST_GLYPH + 2, ATLAS_CELLS = LAST_GLYPH + 3 - FIRST_GLYPH;
+const SOLID = LAST_GLYPH + 1, UNKNOWN = LAST_GLYPH + 2;
+// every other character gets a cell the first time it is drawn; a wide one (CJK, emoji) gets two side by side
+const ATLAS_COLUMNS = 32, ATLAS_ROWS = 64, FIRST_DYNAMIC_CELL = UNKNOWN - FIRST_GLYPH + 1;
+const FALLBACK_FONTS = `"Noto Sans JP", "Yu Gothic", "Meiryo", "Noto Sans CJK SC", "Segoe UI Symbol", "Segoe UI Emoji", sans-serif`;
 const TAB_WIDTH = 4, GUTTER_DIGITS = 7;
 // per instance: column, row, width in cells, atlas cell, palette colour
 const FLOATS_PER_INSTANCE = 5;
@@ -47,6 +50,7 @@ void main() {
 
 import { THEMES } from "./look.mjs";
 import { Highlighter, CLASS_COLOUR } from "./lex.mjs";
+import { wordDiff } from "./words.mjs";
 
 export const PALETTE = THEMES.sage.renderer;
 const COLOUR = Object.fromEntries(Object.keys(PALETTE).map((name, i) => [name, i]));
@@ -115,7 +119,7 @@ export class DiffRenderer {
     probe.font = font;
     const cellW = Math.max(1, Math.round(probe.measureText('M').width));
     const cellH = Math.max(1, Math.round(fontPx * lineHeight * dpr));
-    const columns = 16, rows = Math.ceil(ATLAS_CELLS / columns);
+    const columns = ATLAS_COLUMNS, rows = ATLAS_ROWS;
     const atlas = document.createElement('canvas');
     atlas.width = columns * cellW;
     atlas.height = rows * cellH;
@@ -141,6 +145,39 @@ export class DiffRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.cell = { w: cellW, h: cellH, columns, uvW: 1 / columns, uvH: 1 / rows };
+    this.glyphFont = `${font}, ${FALLBACK_FONTS}`;
+    this.glyphs = new Map();
+    this.nextCell = FIRST_DYNAMIC_CELL;
+    this.atlasFull = false;
+    // one small canvas per glyph width, uploaded whole: no read back from the canvas, which stalls
+    this.glyphCanvas = [1, 2].map((n) => { const c = document.createElement('canvas'); c.width = n * cellW; c.height = cellH; return c; });
+  }
+
+  // the atlas cell of a character beyond ascii, drawn into the atlas the first time it is asked for
+  #glyph(cp, wide) {
+    const known = this.glyphs.get(cp);
+    if (known !== undefined) return known;
+    const { w: cellW, h: cellH, columns } = this.cell;
+    let at = this.nextCell;
+    if (wide && at % columns === columns - 1) ++at;          // both halves on one row of the atlas
+    if (at + (wide ? 2 : 1) > columns * ATLAS_ROWS) { this.atlasFull = true; return UNKNOWN - FIRST_GLYPH; }
+    const g = this.glyphCanvas[wide ? 1 : 0], ctx = g.getContext('2d');
+    ctx.clearRect(0, 0, g.width, g.height);
+    ctx.font = this.glyphFont;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    const span = (wide ? 2 : 1) * cellW, ch = String.fromCodePoint(cp);
+    // a glyph from a fallback font may be wider than its cells: squeeze it in rather than clip it
+    const measured = ctx.measureText(ch).width;
+    if (measured > span) { ctx.save(); ctx.translate(span / 2, 0); ctx.scale(span / measured, 1); ctx.fillText(ch, 0, cellH / 2); ctx.restore(); }
+    else ctx.fillText(ch, span / 2, cellH / 2);
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.atlasTexture);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, (at % columns) * cellW, Math.floor(at / columns) * cellH, gl.RGBA, gl.UNSIGNED_BYTE, g);
+    this.glyphs.set(cp, at);
+    this.nextCell = at + (wide ? 2 : 1);
+    return at;
   }
 
   resize() {
@@ -165,6 +202,7 @@ export class DiffRenderer {
 
   setDiff(diff) {
     this.diff = diff;
+    this.wordCache = new Map();
     this.highlighter = diff.lang ? new Highlighter(diff.lang) : null;
     this.scrollRow = 0;
     this.scrollColumn = 0;
@@ -203,6 +241,26 @@ export class DiffRenderer {
     return [bytes, start, end];
   }
 
+  // the changed-word spans of a line, or null: byte ranges relative to the line start
+  #words(side, line) {
+    const d = this.diff;
+    if (!d.pairs) return null;
+    const other = (side === 'a' ? d.pairs.pairA : d.pairs.pairB)[line];
+    if (other < 0) return null;
+    const aLine = side === 'a' ? line : other, bLine = side === 'a' ? other : line;
+    const key = aLine * 4294967296 + bLine;
+    this.wordCache ??= new Map();
+    let hit = this.wordCache.get(key);
+    if (hit === undefined) {
+      if (this.wordCache.size > 4096) this.wordCache.clear();
+      const [ba, sa, ea] = this.lineSpan('a', aLine), [bb, sb, eb] = this.lineSpan('b', bLine);
+      // very long lines (minified files) are not worth a word table
+      hit = ea - sa < 4000 && eb - sb < 4000 ? wordDiff(ba, sa, ea, bb, sb, eb) : null;
+      this.wordCache.set(key, hit);
+    }
+    return hit && (side === 'a' ? hit.a : hit.b);
+  }
+
   get rowCount() { return this.diff ? (this.split ? this.diff.split.left.length : this.diff.rows.kind.length) : 0; }
   set rowCount(v) { /* derived from the view */ }
   get maxScrollRow() { return Math.max(0, this.rowCount - this.canvas.height / this.cell.h + 1); }
@@ -225,6 +283,7 @@ export class DiffRenderer {
     gl.clearColor(bg[0], bg[1], bg[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     if (!this.diff) return 0;
+    if (this.atlasFull) { this.glyphs.clear(); this.nextCell = FIRST_DYNAMIC_CELL; this.atlasFull = false; }
     const out = this.instances;
     let n = 0;
     const push = (column, row, width, glyph, colour) => {
@@ -266,20 +325,35 @@ export class DiffRenderer {
         const [bytes, start, end] = this.lineSpan(side, line);
         const textColour = kind === ROW_DELETED ? COLOUR.deletedText : kind === ROW_INSERTED ? COLOUR.insertedText : COLOUR.text;
         const classes = this.highlighter ? this.highlighter.classes(side, line, bytes, start, end) : null;
-        let column = 0;
-        for (let i = start; i < end; ++i) {
+        const words = kind === ROW_DELETED || kind === ROW_INSERTED ? this.#words(side, line) : null;
+        const wordColour = kind === ROW_DELETED ? COLOUR.deletedWord : COLOUR.insertedWord;
+        let column = 0, span = 0;
+        for (let i = start; i < end;) {
           const byte = bytes[i];
-          // one glyph per UTF-8 character: continuation bytes take no column
-          if (byte >= 0x80 && byte < 0xc0) continue;
-          const w = byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : 1;
+          let cp = byte, len = 1;
+          if (byte >= 0x80) [cp, len] = decode(bytes, i, end);
+          const w = byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : charWidth(cp);
+          const at = i - start;
+          i += len;
+          if (w === 0) continue;                       // combining marks and joiners take no column
           const x = column - skip;
           column += w;
           if (x < 0) continue;
           if (pane.text + x >= pane.end) break;
+          if (words) {
+            while (span < words.length && words[span][1] <= at) ++span;
+            if (span < words.length && words[span][0] <= at) push(pane.text + x, y, Math.min(w, pane.end - pane.text - x), SOLID, wordColour);
+          }
           if (byte === 32 || byte === 9) continue;
-          const cls = classes && i - start < classes.length ? classes[i - start] : 0;
-          if (byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(pane.text + x, y, 1, byte, cls ? TOKEN_COLOUR[cls] : textColour);
-          else push(pane.text + x, y, 1, UNKNOWN, COLOUR.unknown);
+          const cls = classes && at < classes.length ? classes[at] : 0;
+          const colour = cls ? TOKEN_COLOUR[cls] : textColour;
+          if (byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(pane.text + x, y, 1, byte, colour);
+          else if (cp < 32 || cp === 0x7f || cp === 0xfffd) push(pane.text + x, y, 1, UNKNOWN, COLOUR.unknown);
+          else {
+            const cell = this.#glyph(cp, w === 2);
+            push(pane.text + x, y, 1, FIRST_GLYPH + cell, cell === UNKNOWN - FIRST_GLYPH ? COLOUR.unknown : colour);
+            if (w === 2 && pane.text + x + 1 < pane.end) push(pane.text + x + 1, y, 1, FIRST_GLYPH + cell + 1, colour);
+          }
         }
       }
       if (this.split) push(panes[1].x0 - 1, y, 1, SOLID, COLOUR.gutter);
@@ -308,25 +382,53 @@ export class DiffRenderer {
 DiffRenderer.prototype.setPalette = function (palette) { this.palette = palette; };
 DiffRenderer.prototype.rebuildAtlas = function () { this.dpr = 0; this.resize(); };
 
-// display column of a byte offset in a line (tabs to the next stop of 4, one column per UTF-8 character)
+// one UTF-8 character at i: [code point, byte length]. a broken sequence reads as U+FFFD, one byte long
+export function decode(bytes, i, end) {
+  const b = bytes[i];
+  const len = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+  if (len === 1 || i + len > end) return [0xfffd, 1];
+  let cp = b & (0xff >> (len + 1));
+  for (let k = 1; k < len; ++k) {
+    const c = bytes[i + k];
+    if ((c & 0xc0) !== 0x80) return [0xfffd, 1];
+    cp = (cp << 6) | (c & 0x3f);
+  }
+  return [cp, len];
+}
+
+// columns a character takes: 0 for combining marks and joiners, 2 for East Asian wide and emoji, else 1
+export function charWidth(cp) {
+  if (cp < 0x300) return 1;
+  if ((cp >= 0x300 && cp <= 0x36f) || (cp >= 0x200b && cp <= 0x200f) || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0x1ab0 && cp <= 0x1aff) || (cp >= 0x20d0 && cp <= 0x20ff) || (cp >= 0xe0100 && cp <= 0xe01ef)) return 0;
+  if ((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0x303e) || (cp >= 0x3041 && cp <= 0x33ff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0x4e00 && cp <= 0x9fff) ||
+      (cp >= 0xa000 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
+      (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1f64f) || (cp >= 0x1f900 && cp <= 0x1f9ff) || (cp >= 0x1fa70 && cp <= 0x1faff) || (cp >= 0x20000 && cp <= 0x3fffd)) return 2;
+  return 1;
+}
+
+// display column of a byte offset in a line (tabs to the next stop of 4, wide characters two columns)
 export function columnAt(bytes, start, end, offset) {
   let column = 0;
-  for (let i = start; i < Math.min(offset, end); ++i) {
-    const byte = bytes[i];
-    if (byte >= 0x80 && byte < 0xc0) continue;
-    column += byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : 1;
+  for (let i = start; i < Math.min(offset, end);) {
+    const b = bytes[i];
+    let cp = b, len = 1;
+    if (b >= 0x80) [cp, len] = decode(bytes, i, end);
+    column += b === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : charWidth(cp);
+    i += len;
   }
   return column;
 }
 // byte offset of the character covering a display column; the end of the line past its last column
 export function offsetAt(bytes, start, end, col) {
   let column = 0;
-  for (let i = start; i < end; ++i) {
-    const byte = bytes[i];
-    if (byte >= 0x80 && byte < 0xc0) continue;
-    const w = byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : 1;
-    if (column + w > col) return i;
+  for (let i = start; i < end;) {
+    const b = bytes[i];
+    let cp = b, len = 1;
+    if (b >= 0x80) [cp, len] = decode(bytes, i, end);
+    const w = b === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : charWidth(cp);
+    if (w > 0 && column + w > col) return i;
     column += w;
+    i += len;
   }
   return end;
 }
