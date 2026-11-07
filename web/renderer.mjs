@@ -2,7 +2,7 @@
 // Every glyph and every row background is one instanced quad. Each frame: find the visible rows,
 // fill one instance buffer, one draw call. Text is read straight from the file bytes.
 
-const ROW_DELETED = 1, ROW_INSERTED = 2;
+const ROW_DELETED = 1, ROW_INSERTED = 2, ROW_EMPTY = 3;
 const FIRST_GLYPH = 32, LAST_GLYPH = 126;
 // atlas cells after the printable ASCII range
 const SOLID = LAST_GLYPH + 1, UNKNOWN = LAST_GLYPH + 2, ATLAS_CELLS = LAST_GLYPH + 3 - FIRST_GLYPH;
@@ -37,7 +37,7 @@ precision mediump float;
 in vec2 uv;
 flat in int paletteIndex;
 uniform sampler2D atlas;
-uniform vec4 palette[12];
+uniform vec4 palette[16];
 out vec4 outColour;
 void main() {
   vec4 c = palette[paletteIndex];
@@ -150,7 +150,7 @@ export class DiffRenderer {
     this.canvas.height = height;
     this.visibleRows = Math.ceil(height / this.cell.h) + 1;
     this.visibleColumns = Math.ceil(width / this.cell.w) + 1;
-    const capacity = this.visibleRows * (this.visibleColumns + 2);
+    const capacity = 2 * this.visibleRows * (this.visibleColumns + 8);
     if (this.instances.length < capacity * FLOATS_PER_INSTANCE) {
       this.instances = new Float32Array(capacity * FLOATS_PER_INSTANCE);
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceBuffer);
@@ -163,19 +163,59 @@ export class DiffRenderer {
 
   setDiff(diff) {
     this.diff = diff;
-    this.rowCount = diff.rows.kind.length;
     this.scrollRow = 0;
     this.scrollColumn = 0;
   }
 
-  // text starts after: old number, space, new number, space, marker, space
-  get textColumn() { return 2 * GUTTER_DIGITS + 4; }
-  get maxScrollRow() { return Math.max(0, this.rowCount - this.canvas.height / this.cell.h + 1); }
+  // the panes of the current view: where each starts, where its text starts, how wide it is.
+  // unified: old number, new number, marker, text. split: old | new, each with one number and a marker.
+  panes() {
+    const columns = this.visibleColumns;
+    if (!this.split) return [{ side: 'u', x0: 0, text: 2 * GUTTER_DIGITS + 4, end: columns }];
+    const half = Math.floor(columns / 2);
+    return [
+      { side: 'a', x0: 0, text: GUTTER_DIGITS + 3, end: half },
+      { side: 'b', x0: half + 1, text: half + 1 + GUTTER_DIGITS + 3, end: columns },
+    ];
+  }
 
+  // what a row shows in a pane: [kind, side, line] (side 'a' or 'b'; line -1 for an empty split row)
+  rowCell(row, pane) {
+    const d = this.diff;
+    if (pane === 'u') {
+      const kind = d.rows.kind[row];
+      return kind === ROW_INSERTED ? [kind, 'b', d.rows.bLine[row]] : [kind, 'a', d.rows.aLine[row]];
+    }
+    if (pane === 'a') return [d.split.left[row], 'a', d.split.aLine[row]];
+    return [d.split.right[row], 'b', d.split.bLine[row]];
+  }
+
+  // bytes of a line, without its line ending
+  lineSpan(side, line) {
+    const d = this.diff;
+    const bytes = side === 'a' ? d.a : d.b;
+    const start = (side === 'a' ? d.tables.aStart : d.tables.bStart)[line];
+    let end = start + (side === 'a' ? d.tables.aLen : d.tables.bLen)[line];
+    while (end > start && (bytes[end - 1] === 10 || bytes[end - 1] === 13)) --end;
+    return [bytes, start, end];
+  }
+
+  get rowCount() { return this.diff ? (this.split ? this.diff.split.left.length : this.diff.rows.kind.length) : 0; }
+  set rowCount(v) { /* derived from the view */ }
+  get maxScrollRow() { return Math.max(0, this.rowCount - this.canvas.height / this.cell.h + 1); }
   scrollTo(row) { this.scrollRow = Math.min(Math.max(0, row), this.maxScrollRow); }
 
-  // one frame: returns the number of quads drawn
-  draw() {
+  // device-pixel point -> { row, pane, col } where col counts text columns (scroll included)
+  hit(px, py) {
+    const row = Math.floor(this.scrollRow + py / this.cell.h);
+    const c = Math.floor(px / this.cell.w);
+    const panes = this.panes();
+    const pane = panes.find((p) => c < p.end) ?? panes[panes.length - 1];
+    return { row: Math.min(Math.max(0, row), this.rowCount - 1), pane: pane.side, col: Math.max(0, c - pane.text + this.scrollColumn) };
+  }
+
+  // one frame: returns the number of quads drawn. decorate(row, pane) may return [[col0, col1, colourName], ...]
+  draw(decorate) {
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     const bg = hexToRgba(this.palette.background);
@@ -185,49 +225,59 @@ export class DiffRenderer {
     const out = this.instances;
     let n = 0;
     const push = (column, row, width, glyph, colour) => {
+      if (n * FLOATS_PER_INSTANCE >= out.length) return;
       const o = n * FLOATS_PER_INSTANCE;
       out[o] = column; out[o + 1] = row; out[o + 2] = width; out[o + 3] = glyph - FIRST_GLYPH; out[o + 4] = colour;
       ++n;
     };
-    const { rows, a, b, tables } = this.diff;
     const first = Math.floor(this.scrollRow);
     const last = Math.min(this.rowCount, first + this.visibleRows);
-    const columns = this.visibleColumns, textColumn = this.textColumn, skip = this.scrollColumn;
+    const skip = this.scrollColumn, panes = this.panes();
+    const number = (value, column, y, colour) => {
+      if (value < 0) return;
+      let v = value + 1, c = column + GUTTER_DIGITS - 1;
+      do { push(c--, y, 1, 48 + (v % 10), colour); v = Math.floor(v / 10); } while (v > 0 && c >= column);
+    };
     for (let row = first; row < last; ++row) {
       const y = row - first;
-      const kind = rows.kind[row];
-      if (kind !== 0) push(0, y, columns, SOLID, kind === ROW_DELETED ? COLOUR.deletedRow : COLOUR.insertedRow);
-      const gutterColour = kind ? COLOUR.gutterChanged : COLOUR.gutter;
-      const number = (value, column) => {
-        if (value < 0) return;
-        let v = value + 1, c = column + GUTTER_DIGITS - 1;
-        do { push(c--, y, 1, 48 + (v % 10), gutterColour); v = Math.floor(v / 10); } while (v > 0 && c >= column);
-      };
-      number(rows.aLine[row], 0);
-      number(rows.bLine[row], GUTTER_DIGITS + 1);
-      if (kind === ROW_DELETED) push(2 * GUTTER_DIGITS + 2, y, 1, 45, COLOUR.deletedMark);
-      if (kind === ROW_INSERTED) push(2 * GUTTER_DIGITS + 2, y, 1, 43, COLOUR.insertedMark);
-      const fromB = kind === ROW_INSERTED;
-      const bytes = fromB ? b : a;
-      const line = fromB ? rows.bLine[row] : rows.aLine[row];
-      const start = (fromB ? tables.bStart : tables.aStart)[line];
-      const end = start + (fromB ? tables.bLen : tables.aLen)[line];
-      const textColour = kind === ROW_DELETED ? COLOUR.deletedText : kind === ROW_INSERTED ? COLOUR.insertedText : COLOUR.text;
-      let column = 0;
-      for (let i = start; i < end; ++i) {
-        const byte = bytes[i];
-        if (byte === 10 || byte === 13) break;
-        // one glyph per UTF-8 character: continuation bytes take no column
-        if (byte >= 0x80 && byte < 0xc0) continue;
-        const width = byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : 1;
-        const x = column - skip;
-        column += width;
-        if (x < 0) continue;
-        if (textColumn + x >= columns) break;
-        if (byte === 32 || byte === 9) continue;
-        if (byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(textColumn + x, y, 1, byte, textColour);
-        else push(textColumn + x, y, 1, UNKNOWN, COLOUR.unknown);
+      for (const pane of panes) {
+        const [kind, side, line] = this.rowCell(row, pane.side);
+        const width = pane.end - pane.x0;
+        if (kind === ROW_DELETED) push(pane.x0, y, width, SOLID, COLOUR.deletedRow);
+        else if (kind === ROW_INSERTED) push(pane.x0, y, width, SOLID, COLOUR.insertedRow);
+        else if (kind === ROW_EMPTY) push(pane.x0, y, width, SOLID, COLOUR.emptyRow);
+        const gutterColour = kind ? COLOUR.gutterChanged : COLOUR.gutter;
+        if (pane.side === 'u') {
+          number(this.diff.rows.aLine[row], 0, y, gutterColour);
+          number(this.diff.rows.bLine[row], GUTTER_DIGITS + 1, y, gutterColour);
+        } else number(line, pane.x0, y, gutterColour);
+        if (kind === ROW_DELETED) push(pane.text - 2, y, 1, 45, COLOUR.deletedMark);
+        if (kind === ROW_INSERTED) push(pane.text - 2, y, 1, 43, COLOUR.insertedMark);
+        if (line < 0) continue;
+        // selection and find matches sit under the text
+        const marks = decorate ? decorate(row, pane.side) : null;
+        if (marks) for (const [c0, c1, colourName] of marks) {
+          const x0 = Math.max(pane.text, pane.text + c0 - skip), x1 = Math.min(pane.end, pane.text + c1 - skip);
+          if (x1 > x0) push(x0, y, x1 - x0, SOLID, COLOUR[colourName]);
+        }
+        const [bytes, start, end] = this.lineSpan(side, line);
+        const textColour = kind === ROW_DELETED ? COLOUR.deletedText : kind === ROW_INSERTED ? COLOUR.insertedText : COLOUR.text;
+        let column = 0;
+        for (let i = start; i < end; ++i) {
+          const byte = bytes[i];
+          // one glyph per UTF-8 character: continuation bytes take no column
+          if (byte >= 0x80 && byte < 0xc0) continue;
+          const w = byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : 1;
+          const x = column - skip;
+          column += w;
+          if (x < 0) continue;
+          if (pane.text + x >= pane.end) break;
+          if (byte === 32 || byte === 9) continue;
+          if (byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(pane.text + x, y, 1, byte, textColour);
+          else push(pane.text + x, y, 1, UNKNOWN, COLOUR.unknown);
+        }
       }
+      if (this.split) push(panes[1].x0 - 1, y, 1, SOLID, COLOUR.gutter);
     }
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vao);
@@ -252,3 +302,26 @@ export class DiffRenderer {
 // theme changes only touch the palette; fonts change the atlas
 DiffRenderer.prototype.setPalette = function (palette) { this.palette = palette; };
 DiffRenderer.prototype.rebuildAtlas = function () { this.dpr = 0; this.resize(); };
+
+// display column of a byte offset in a line (tabs to the next stop of 4, one column per UTF-8 character)
+export function columnAt(bytes, start, end, offset) {
+  let column = 0;
+  for (let i = start; i < Math.min(offset, end); ++i) {
+    const byte = bytes[i];
+    if (byte >= 0x80 && byte < 0xc0) continue;
+    column += byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : 1;
+  }
+  return column;
+}
+// byte offset of the character covering a display column; the end of the line past its last column
+export function offsetAt(bytes, start, end, col) {
+  let column = 0;
+  for (let i = start; i < end; ++i) {
+    const byte = bytes[i];
+    if (byte >= 0x80 && byte < 0xc0) continue;
+    const w = byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : 1;
+    if (column + w > col) return i;
+    column += w;
+  }
+  return end;
+}

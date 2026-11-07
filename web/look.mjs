@@ -11,6 +11,7 @@ export const THEMES = {
       background: '#b9d5be', text: '#1b2a21', gutter: '#6a8a73', gutterChanged: '#3e5a46',
       deletedRow: '#e3c4b6', insertedRow: '#d4ead0', deletedMark: '#a4432e', insertedMark: '#256f3e',
       deletedText: '#3a2019', insertedText: '#12301c', currentRow: '#c4ddc8', unknown: '#7a4fb0',
+      emptyRow: '#adc9b2', selection: '#9cc4a6', match: '#f0d98a', matchCurrent: '#e3a94a',
     },
   },
   dusk: {
@@ -21,6 +22,7 @@ export const THEMES = {
       background: '#2c3742', text: '#ece5d2', gutter: '#76838c', gutterChanged: '#b8c2c8',
       deletedRow: '#4b3338', insertedRow: '#2d4a3d', deletedMark: '#f2907c', insertedMark: '#8fdba8',
       deletedText: '#f6dcd6', insertedText: '#d9f4e2', currentRow: '#34404c', unknown: '#c6a2f2',
+      emptyRow: '#262f38', selection: '#3f5566', match: '#6b5a2a', matchCurrent: '#a8792b',
     },
   },
 };

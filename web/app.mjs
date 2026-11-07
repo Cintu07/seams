@@ -2,6 +2,7 @@
 // window.viewer exposes load/scroll/jump hooks for the automated benchmark (web/bench_viewer.mjs).
 import { DiffRenderer } from './renderer.mjs';
 import { THEMES, icon, face, drawSkyline } from './look.mjs';
+import { createInteraction } from './interact.mjs';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view'), stats = $('stats'), bar = $('bar'), thumb = $('thumb'), marks = $('marks');
@@ -15,6 +16,11 @@ let theme = THEMES[storage.get('seams-theme')] ?? THEMES.sage;
 await Promise.race([document.fonts.load('13px "IBM Plex Mono"'), new Promise((r) => setTimeout(r, 1500))]);
 const renderer = new DiffRenderer(canvas, { palette: theme.renderer });
 const worker = new Worker(new URL('./diff_worker.mjs', import.meta.url), { type: 'module' });
+const ix = createInteraction({
+  renderer, canvas, getDiff: () => current, redraw: () => requestFrame(),
+  findUi: { bar: $('find'), input: $('findInput'), count: $('findCount'), close: $('findClose') },
+  mirror: $('mirror'),
+});
 
 let current = null;
 let requestId = 0;
@@ -70,8 +76,9 @@ function requestFrame() {
   requestAnimationFrame(() => {
     frameQueued = false;
     const t0 = performance.now();
-    renderer.draw();
+    renderer.draw(ix.decorate);
     frameTimes.push(performance.now() - t0);
+    ix.updateMirror();
     if (frameTimes.length > 240) frameTimes.shift();
     placeThumb();
   });
@@ -95,12 +102,13 @@ function drawMarks() {
   const ctx = marks.getContext('2d');
   ctx.clearRect(0, 0, marks.width, marks.height);
   if (!current) return;
-  const kind = current.rows.kind, total = kind.length, h = marks.height;
+  const total = renderer.rowCount, h = marks.height;
   const deleted = new Uint8Array(h), inserted = new Uint8Array(h);
   for (let r = 0; r < total; ++r) {
-    if (!kind[r]) continue;
     const y = Math.floor((r / total) * h);
-    if (kind[r] === 1) deleted[y] = 1; else inserted[y] = 1;
+    if (renderer.split) { if (current.split.left[r] === 1) deleted[y] = 1; if (current.split.right[r] === 2) inserted[y] = 1; continue; }
+    const k = current.rows.kind[r];
+    if (k === 1) deleted[y] = 1; else if (k === 2) inserted[y] = 1;
   }
   const mark = Math.max(2, Math.round(2 * dpr));
   for (let y = 0; y < h; ++y) {
@@ -115,8 +123,8 @@ function showStats() {
   const p = (q) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : 0).toFixed(2);
   const t = current.timing;
   stats.innerHTML =
-    `${current.rows.kind.length.toLocaleString()} rows  <span class="del">−${current.deleted.toLocaleString()}</span>  <span class="ins">+${current.inserted.toLocaleString()}</span>\n` +
-    `diff ${t.diff.toFixed(1)} ms · first frame ${t.firstFrame.toFixed(1)} ms · frame ${p(0.99)} ms · row ${Math.floor(renderer.scrollRow + 1).toLocaleString()}`;
+    `${renderer.rowCount.toLocaleString()} rows  <span class="del">−${current.deleted.toLocaleString()}</span>  <span class="ins">+${current.inserted.toLocaleString()}</span>\n` +
+    `diff ${t.diff.toFixed(1)} ms · first frame ${(t.firstFrame ?? 0).toFixed(1)} ms · frame ${p(0.99)} ms · row ${Math.floor(renderer.scrollRow + 1).toLocaleString()}`;
 }
 setInterval(showStats, 250);
 
@@ -145,6 +153,7 @@ async function show(a, b, names) {
   const result = await diffInWorker(a, b);
   result.a = new Uint8Array(result.a);
   result.b = new Uint8Array(result.b);
+  ix.clear();
   renderer.setDiff(result);
   current = result;
   renderer.draw();
@@ -161,7 +170,7 @@ async function show(a, b, names) {
   drawMarks();
   requestFrame();
   showStats();
-  return { ...result.timing, rows: result.rows.kind.length, deleted: result.deleted, inserted: result.inserted };
+  return { ...result.timing, rows: renderer.rowCount, deleted: result.deleted, inserted: result.inserted };
 }
 
 async function loadUrls(oldUrl, newUrl) {
@@ -197,16 +206,35 @@ canvas.addEventListener('keydown', (e) => {
   else if (e.key === 'End') { renderer.scrollTo(Infinity); requestFrame(); e.preventDefault(); }
   else if (e.key === 'n' || e.key === 'p') { jumpToChange(e.key === 'n' ? 1 : -1); e.preventDefault(); }
   else if (e.key === 't') { mascot.click(); e.preventDefault(); }
+  else if (e.key === 'v') { toggleView(); e.preventDefault(); }
 });
+
+// unified <-> split, keeping the same old line at the top of the view
+function toggleView() {
+  if (!current) return;
+  const top = Math.floor(renderer.scrollRow);
+  const line = renderer.split ? current.split.aLine[top] : current.rows.aLine[top];
+  renderer.split = !renderer.split;
+  if (line >= 0) renderer.scrollTo((renderer.split ? current.split.aRow : current.rows.aRow)[line]);
+  $('viewToggle').textContent = renderer.split ? 'unified view' : 'split view';
+  $('viewToggle').setAttribute('aria-pressed', String(renderer.split));
+  ix.viewChanged();
+  drawMarks();
+  requestFrame();
+}
+$('viewToggle').addEventListener('click', () => { toggleView(); canvas.focus(); });
+$('findOpen').addEventListener('click', () => ix.openFind());
 
 // next or previous change from the current row; n / p
 function jumpToChange(direction) {
-  const kind = current?.rows.kind;
-  if (!kind) return;
+  if (!current) return;
+  const kind = renderer.split ? { length: renderer.rowCount, at: (r) => current.split.left[r] | current.split.right[r] } : null;
+  const changed = (r) => (kind ? (current.split.left[r] !== 0 || current.split.right[r] !== 0) : current.rows.kind[r] !== 0);
+  const n = renderer.rowCount;
   let r = Math.floor(renderer.scrollRow) + 3 + direction;
-  while (r >= 0 && r < kind.length && kind[r] && kind[r - direction]) r += direction;
-  while (r >= 0 && r < kind.length && !kind[r]) r += direction;
-  if (r >= 0 && r < kind.length) { renderer.scrollTo(r - 3); requestFrame(); }
+  while (r >= 0 && r < n && changed(r) && changed(r - direction)) r += direction;
+  while (r >= 0 && r < n && !changed(r)) r += direction;
+  if (r >= 0 && r < n) { renderer.scrollTo(r - 3); requestFrame(); }
   else setMood('sleepy', direction > 0 ? 'no more changes below' : 'no more changes above');
 }
 
