@@ -1,0 +1,21 @@
+{
+  "name": "seams-diff",
+  "version": "0.1.0",
+  "description": "A diff viewer for huge files: the diff runs in hand-written WebAssembly, the view is drawn with WebGL2.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "author": "Cintu07",
+  "repository": { "type": "git", "url": "https://github.com/Cintu07/seams" },
+  "keywords": ["diff", "viewer", "webassembly", "webgl", "react", "code-review"],
+  "files": ["dist", "README.md"],
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.mjs" },
+    "./react": { "types": "./dist/react.d.ts", "default": "./dist/react.mjs" }
+  },
+  "sideEffects": false,
+  "peerDependencies": { "react": ">=18" },
+  "peerDependenciesMeta": { "react": { "optional": true } },
+  "scripts": { "build": "node build.mjs", "prepack": "node build.mjs" }
+}
