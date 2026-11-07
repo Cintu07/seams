@@ -16,6 +16,10 @@ const viewers = [
   { name: 'pierre highlighted', url: `${PIERRE}?version=164&highlighter=highlights&diffLib=jsdiff`, load: (o, n) => window.bench.load(o, n).then((r) => ({ firstFrame: r.firstFrameMs, compute: r.parseMs, highlighted: r.highlightedMs })) },
 ];
 
+// VIEWERS=seams runs only the named viewers (comma separated)
+const only = process.env.VIEWERS?.split(',');
+if (only) viewers.splice(0, viewers.length, ...viewers.filter((v) => only.includes(v.name)));
+
 const stats = (d, vsync) => {
   const s = [...d].sort((x, y) => x - y), q = (p) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
   return { frames: s.length, p50: q(0.5), p99: q(0.99), max: s[s.length - 1], dropped: s.filter((x) => x > vsync * 1.5).length };
@@ -38,6 +42,8 @@ for (const [o, n] of pairs) {
     }));
     const load = await page.evaluate(([src, o, n]) => (0, eval)(src)(o, n), [v.load.toString(), o, n]);
     await page.waitForTimeout(2500);
+    // seams highlights too: its line states are in before the scroll test starts
+    if (v.name === 'seams') load.highlighted = await page.evaluate(() => new Promise((r) => { const w = () => { const t = window.viewer.renderer.diff.timing; if (t.states !== undefined) r(t.firstFrame + t.states); else setTimeout(w, 50); }; w(); }));
     // a real scroll gesture, the same for both
     await page.evaluate(() => { window.__d = []; let last; window.__run = true; const t = (x) => { if (last) window.__d.push(x - last); last = x; if (window.__run) requestAnimationFrame(t); }; requestAnimationFrame(t); });
     await cdp.send('Input.synthesizeScrollGesture', { x: 750, y: 450, yDistance: -20000, speed: 4000, gestureSourceType: 'mouse' });

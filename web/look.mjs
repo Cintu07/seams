@@ -12,6 +12,7 @@ export const THEMES = {
       deletedRow: '#e3c4b6', insertedRow: '#d4ead0', deletedMark: '#a4432e', insertedMark: '#256f3e',
       deletedText: '#3a2019', insertedText: '#12301c', currentRow: '#c4ddc8', unknown: '#7a4fb0',
       emptyRow: '#adc9b2', selection: '#9cc4a6', match: '#f0d98a', matchCurrent: '#e3a94a',
+      keyword: '#7b2d50', type: '#1e5f63', string: '#7d5410', number: '#a3471f', comment: '#4f6e5a', func: '#38478a',
     },
   },
   dusk: {
@@ -23,6 +24,7 @@ export const THEMES = {
       deletedRow: '#4b3338', insertedRow: '#2d4a3d', deletedMark: '#f2907c', insertedMark: '#8fdba8',
       deletedText: '#f6dcd6', insertedText: '#d9f4e2', currentRow: '#34404c', unknown: '#c6a2f2',
       emptyRow: '#262f38', selection: '#3f5566', match: '#6b5a2a', matchCurrent: '#a8792b',
+      keyword: '#f0a3c0', type: '#8fd3cf', string: '#e8c27a', number: '#f2a07b', comment: '#8a97a3', func: '#aebff2',
     },
   },
 };

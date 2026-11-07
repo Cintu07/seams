@@ -3,6 +3,7 @@
 import { DiffRenderer } from './renderer.mjs';
 import { THEMES, icon, face, drawSkyline } from './look.mjs';
 import { createInteraction } from './interact.mjs';
+import { languageOf } from './lex.mjs';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view'), stats = $('stats'), bar = $('bar'), thumb = $('thumb'), marks = $('marks');
@@ -130,16 +131,24 @@ setInterval(showStats, 250);
 
 // ------------------------------------------------------------------ loading
 
-function diffInWorker(a, b) {
+// line-start states for the highlighter arrive after the first frame
+worker.addEventListener('message', ({ data }) => {
+  if (!data.states || !current || data.id !== current.id) return;
+  current.timing.states = data.timing.states;
+  renderer.highlighter?.setStates(data.states);
+  requestFrame();
+});
+
+function diffInWorker(a, b, lang) {
   const id = ++requestId;
   return new Promise((resolve) => {
     const onMessage = ({ data }) => {
-      if (data.id !== id) return;
+      if (data.id !== id || data.states) return;
       worker.removeEventListener('message', onMessage);
       resolve(data);
     };
     worker.addEventListener('message', onMessage);
-    worker.postMessage({ id, a, b }, [a, b]);
+    worker.postMessage({ id, a, b, lang }, [a, b]);
   });
 }
 
@@ -150,7 +159,9 @@ const shortName = (path) => String(path).split(/[\\/]/).pop();
 async function show(a, b, names) {
   setMood('busy', 'diffing…');
   const t0 = performance.now();
-  const result = await diffInWorker(a, b);
+  const lang = languageOf(names[1]) ?? languageOf(names[0]);
+  const result = await diffInWorker(a, b, lang);
+  result.lang = lang;
   result.a = new Uint8Array(result.a);
   result.b = new Uint8Array(result.b);
   ix.clear();

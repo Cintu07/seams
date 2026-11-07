@@ -6,7 +6,9 @@ import { columnAt, offsetAt } from './renderer.mjs';
 const decoder = new TextDecoder();
 const order = (a, b) => (a.row - b.row) || (a.col - b.col);
 
-export function createInteraction({ renderer, canvas, getDiff, redraw, findUi, mirror }) {
+// scope: when given, copy and the find keys only act while focus is inside it (one page, many viewers)
+export function createInteraction({ renderer, canvas, getDiff, redraw, findUi, mirror, scope = null }) {
+  const inScope = () => !scope || scope.contains(document.activeElement);
   // ---------------------------------------------------------------- selection
   let sel = null;          // { pane, anchor: { row, col }, head: { row, col } }
   let selecting = false;
@@ -64,13 +66,14 @@ export function createInteraction({ renderer, canvas, getDiff, redraw, findUi, m
     return lines.join('\n');
   }
   // Ctrl+C, the context menu and the Edit menu all fire 'copy'
-  document.addEventListener('copy', (e) => {
-    if (document.activeElement === findUi.input) return;
+  const onCopy = (e) => {
+    if (document.activeElement === findUi.input || !inScope()) return;
     const text = selectedText();
     if (!text) return;
     e.clipboardData.setData('text/plain', text);
     e.preventDefault();
-  });
+  };
+  document.addEventListener('copy', onCopy);
 
   // ---------------------------------------------------------------- find
   // matches as parallel arrays: row in the current view, pane ('a' or 'b' or 'u'), columns
@@ -196,10 +199,12 @@ export function createInteraction({ renderer, canvas, getDiff, redraw, findUi, m
   }
   function closeFind() { findUi.bar.hidden = true; search(''); canvas.focus(); }
   findUi.close?.addEventListener('click', closeFind);
-  addEventListener('keydown', (e) => {
+  const onKey = (e) => {
+    if (!inScope()) return;
     if ((e.ctrlKey || e.metaKey) && e.key === 'f' && getDiff()) { e.preventDefault(); openFind(); }
     else if (e.key === 'F3' || ((e.ctrlKey || e.metaKey) && e.key === 'g')) { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
-  });
+  };
+  addEventListener('keydown', onKey);
 
   // ---------------------------------------------------------------- screen-reader mirror
   // the canvas is invisible to assistive tech, so the visible lines are mirrored as a list
@@ -231,5 +236,6 @@ export function createInteraction({ renderer, canvas, getDiff, redraw, findUi, m
     clear() { sel = null; found = { rows: [], panes: [], c0: [], c1: [] }; current = -1; },
     // a view change moves every row, so selections and match rows are redone in the new view
     viewChanged() { sel = null; if (query) search(query); },
+    destroy() { document.removeEventListener('copy', onCopy); removeEventListener('keydown', onKey); clearTimeout(mirrorTimer); },
   };
 }

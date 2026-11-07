@@ -11,3 +11,5 @@
 /STUDY_PIERRE.md
 **/node_modules/
 **/target/
+/pkg/dist/
+*.tgz

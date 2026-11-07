@@ -37,7 +37,7 @@ precision mediump float;
 in vec2 uv;
 flat in int paletteIndex;
 uniform sampler2D atlas;
-uniform vec4 palette[16];
+uniform vec4 palette[32];
 out vec4 outColour;
 void main() {
   vec4 c = palette[paletteIndex];
@@ -46,9 +46,11 @@ void main() {
 }`;
 
 import { THEMES } from "./look.mjs";
+import { Highlighter, CLASS_COLOUR } from "./lex.mjs";
 
 export const PALETTE = THEMES.sage.renderer;
 const COLOUR = Object.fromEntries(Object.keys(PALETTE).map((name, i) => [name, i]));
+const TOKEN_COLOUR = CLASS_COLOUR.map((name) => (name ? COLOUR[name] : 0));
 
 function hexToRgba(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -163,6 +165,7 @@ export class DiffRenderer {
 
   setDiff(diff) {
     this.diff = diff;
+    this.highlighter = diff.lang ? new Highlighter(diff.lang) : null;
     this.scrollRow = 0;
     this.scrollColumn = 0;
   }
@@ -262,6 +265,7 @@ export class DiffRenderer {
         }
         const [bytes, start, end] = this.lineSpan(side, line);
         const textColour = kind === ROW_DELETED ? COLOUR.deletedText : kind === ROW_INSERTED ? COLOUR.insertedText : COLOUR.text;
+        const classes = this.highlighter ? this.highlighter.classes(side, line, bytes, start, end) : null;
         let column = 0;
         for (let i = start; i < end; ++i) {
           const byte = bytes[i];
@@ -273,7 +277,8 @@ export class DiffRenderer {
           if (x < 0) continue;
           if (pane.text + x >= pane.end) break;
           if (byte === 32 || byte === 9) continue;
-          if (byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(pane.text + x, y, 1, byte, textColour);
+          const cls = classes && i - start < classes.length ? classes[i - start] : 0;
+          if (byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(pane.text + x, y, 1, byte, cls ? TOKEN_COLOUR[cls] : textColour);
           else push(pane.text + x, y, 1, UNKNOWN, COLOUR.unknown);
         }
       }
