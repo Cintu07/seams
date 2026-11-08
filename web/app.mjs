@@ -4,6 +4,7 @@ import { DiffRenderer } from './renderer.mjs';
 import { THEMES, icon, face, drawSkyline } from './look.mjs';
 import { createInteraction } from './interact.mjs';
 import { languageOf } from './lex.mjs';
+import { readPack } from './pack.mjs';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view'), stats = $('stats'), bar = $('bar'), thumb = $('thumb'), marks = $('marks');
@@ -164,9 +165,21 @@ async function show(a, b, names) {
   result.lang = lang;
   result.a = new Uint8Array(result.a);
   result.b = new Uint8Array(result.b);
+  return present(result, names, t0);
+}
+
+// a pack was diffed ahead of time: no worker, no diff, only rows to lay out and a frame to draw
+async function showPack(buffer, label) {
+  const t0 = performance.now();
+  const result = readPack(buffer);
+  return present(result, result.names ?? [label, label], t0);
+}
+
+async function present(result, names, t0) {
   ix.clear();
   renderer.setDiff(result);
   current = result;
+  if (result.states) renderer.highlighter?.setStates(result.states);
   renderer.draw();
   await nextFrame();
   result.timing.firstFrame = performance.now() - t0;
@@ -182,6 +195,12 @@ async function show(a, b, names) {
   requestFrame();
   showStats();
   return { ...result.timing, rows: renderer.rowCount, deleted: result.deleted, inserted: result.inserted };
+}
+
+async function loadPack(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.url}: ${r.status}`);
+  return showPack(await r.arrayBuffer(), url);
 }
 
 async function loadUrls(oldUrl, newUrl) {
@@ -282,6 +301,8 @@ $('newFile').addEventListener('change', (e) => { picked.new = e.target.files[0];
 addEventListener('dragover', (e) => e.preventDefault());
 addEventListener('drop', (e) => {
   e.preventDefault();
+  const pack = [...e.dataTransfer.files].find((f) => f.name.endsWith('.seamspack'));
+  if (pack) { pack.arrayBuffer().then((buf) => showPack(buf, pack.name)).then(() => canvas.focus()); return; }
   const files = [...e.dataTransfer.files];
   if (files.length >= 2) { picked.old = files[0]; picked.new = files[1]; }
   else if (files.length === 1) { if (!picked.old || picked.new) { picked.old = files[0]; picked.new = null; } else picked.new = files[0]; }
@@ -337,12 +358,16 @@ async function idle(ms) {
   return frameStats(deltas);
 }
 
-window.viewer = { loadUrls, autoscroll, jumps, idle, renderer };
+window.viewer = { loadUrls, loadPack, autoscroll, jumps, idle, renderer };
 
 applyTheme(theme);
 setMood('idle', 'hello · drop two files');
 const params = new URLSearchParams(location.search);
-if (params.get('old') && params.get('new')) {
+if (params.get('pack')) {
+  loadPack(`/fixtures/${params.get('pack')}`)
+    .then(() => { window.viewerReady = true; canvas.focus(); })
+    .catch((e) => { say.textContent = String(e); });
+} else if (params.get('old') && params.get('new')) {
   loadUrls(`/fixtures/${params.get('old')}`, `/fixtures/${params.get('new')}`)
     .then(() => { window.viewerReady = true; canvas.focus(); })
     .catch((e) => { say.textContent = String(e); });

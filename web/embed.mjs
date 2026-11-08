@@ -6,6 +6,7 @@ import { DiffRenderer } from './renderer.mjs';
 import { THEMES } from './look.mjs';
 import { createInteraction } from './interact.mjs';
 import { languageOf } from './lex.mjs';
+import { readPack } from './pack.mjs';
 
 let worker = null, nextId = 0;
 const waiting = new Map();   // id -> { resolve, onStates }
@@ -165,6 +166,20 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
   // the atlas is drawn with whatever font is ready; redraw it once web fonts arrive
   document.fonts?.ready.then(() => { if (!destroyed) { renderer.rebuildAtlas(); requestFrame(); } });
 
+  async function show(result, t0) {
+    ix.clear();
+    renderer.setDiff(result);
+    current = result;
+    if (result.states) renderer.highlighter?.setStates(result.states);
+    renderer.draw(ix.decorate);
+    await new Promise((r) => requestAnimationFrame(r));
+    result.timing.firstFrame = performance.now() - t0;
+    canvas.setAttribute('aria-label', `diff, ${result.deleted} lines deleted, ${result.inserted} inserted`);
+    drawMarks();
+    requestFrame();
+    return api.stats;
+  }
+
   const api = {
     /** Diff two files and show them. Resolves with row counts and timings once the first frame is drawn. */
     async setFiles(oldFile, newFile, { name, oldName, newName, language } = {}) {
@@ -188,18 +203,23 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
       result.a = new Uint8Array(result.a);
       result.b = new Uint8Array(result.b);
       result.lang = lang;
-      ix.clear();
-      renderer.setDiff(result);
-      current = result;
-      renderer.draw(ix.decorate);
-      await new Promise((r) => requestAnimationFrame(r));
-      result.timing.firstFrame = performance.now() - t0;
-      canvas.setAttribute('aria-label', `diff, ${result.deleted} lines deleted, ${result.inserted} inserted`);
-      drawMarks();
-      requestFrame();
-      return api.stats;
+      return show(result, t0);
+    },
+    /** Open a diff made ahead of time with seams-pack: nothing is diffed in the browser. */
+    async setPack(source) {
+      const mine = ++loadId, t0 = performance.now();
+      let buffer = source;
+      if (typeof source === 'string' || source instanceof URL) {
+        const r = await fetch(source);
+        if (!r.ok) throw new Error(`seams: ${r.url}: ${r.status}`);
+        buffer = await r.arrayBuffer();
+      } else if (ArrayBuffer.isView(source)) buffer = source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
+      else if (typeof source?.arrayBuffer === 'function') buffer = await source.arrayBuffer();
+      if (destroyed || mine !== loadId) return null;
+      return show(readPack(buffer), t0);
     },
     get stats() {
+
       return current && { rows: renderer.rowCount, deleted: current.deleted, inserted: current.inserted, changes: current.records, language: current.lang, timing: { ...current.timing } };
     },
     /** 'unified' or 'split'; the line at the top of the view stays there. */
