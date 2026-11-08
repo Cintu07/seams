@@ -133,3 +133,10 @@ $('viewToggle').addEventListener('click', () => {
 
 paint();
 run('own', ownCode);
+
+// v inside the viewer flips unified and split, as the try-it text promises
+$('viewer').addEventListener('keydown', (e) => {
+  if (e.key !== 'v' || e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'INPUT') return;
+  e.preventDefault();
+  $('viewToggle').click();
+});
