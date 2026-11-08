@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- the link preview card: render at 1200x630 with node site/share.mjs -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "Plex"; src: url("fonts/ibm-plex-mono-400.woff2"); font-weight: 400; }
+@font-face { font-family: "Dot"; src: url("fonts/dotgothic16-400.woff2"); }
+html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+body { background: #c3dbc8; color: #1b2a21; display: flex; flex-direction: column; justify-content: center; padding: 0 96px; box-sizing: border-box; }
+h1 { font: 400 196px/1 "Dot", monospace; margin: 0 0 36px -8px; letter-spacing: 4px; text-shadow: 6px 6px 0 rgba(253, 251, 239, 0.7); }
+p { font: 400 40px/1.35 "Plex", monospace; margin: 0; max-width: 980px; color: #1b2a21; }
+.rule { width: 120px; height: 8px; background: #256f3e; margin: 0 0 34px; }
+</style>
+</head>
+<body>
+  <h1>seams</h1>
+  <div class="rule"></div>
+  <p>a line diff engine written by hand in x86-64 assembly and webassembly</p>
+</body>
+</html>
