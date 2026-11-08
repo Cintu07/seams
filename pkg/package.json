@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "A diff viewer for huge files: the diff runs in hand-written WebAssembly, the view is drawn with WebGL2.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "author": "Cintu07",
   "repository": { "type": "git", "url": "https://github.com/Cintu07/seams" },
   "keywords": ["diff", "viewer", "webassembly", "webgl", "react", "code-review"],

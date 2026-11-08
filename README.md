@@ -9,6 +9,13 @@ first buffer and that script and rebuilds the second buffer byte for byte, inclu
 newline. The script stores only change records (`a_start`, `b_start`, `a_count`, `b_count`); unchanged
 runs are the gaps between them.
 
+## Get it
+
+- In a web page, no install: `import { createDiffViewer } from 'https://cintu07.github.io/seams/lib/index.mjs'`.
+- Linux x86-64: `seams-linux-x86_64.tar.gz` from [Releases](https://github.com/Cintu07/seams/releases), one static binary.
+- Self-hosted web library: `seams-web.tar.gz` from the same release; serve the folder and import `index.mjs`.
+- From source: `make` (NASM and GCC).
+
 ## Pipeline
 
 1. `scan_lines.asm`: find line starts and lengths. Scalar and AVX2 versions give identical tables.
@@ -126,3 +133,7 @@ of a file; seams skips them before hashing. On generated files with sparse edits
 faster than imara. On dense edits (10,000 changes spread through the file) it is 2.2 to 2.7 times
 slower with `--minimal`, because it returns the minimal script and imara's default gives that up for
 speed. The bounded default (`SEAMS_FLAG_FAST`) has not been benchmarked against imara yet.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
