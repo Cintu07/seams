@@ -1,12 +1,16 @@
 #define _GNU_SOURCE
-/* seams: unified diff of two files, computed by the assembly engine.
-     seams [options] old new
+/* seams: diff, patch and three-way merge, computed by the assembly engine.
+     seams [options] old new        unified diff
        -U n       context lines (default 3)
        -L label   name for old, then new, in the --- / +++ header (may be given twice)
        --stat     print only the insertion/deletion counts
        --time     print the time spent in seams_diff to stderr
+       --minimal  the smallest possible diff, however long it takes (default: bounded time)
        --color    colour output (default: when stdout is a terminal), --no-color to turn off
-   Exit status: 0 same, 1 different, 2 trouble (like diff). */
+     seams patch old new            write a self-contained patch for old -> new to stdout
+     seams apply old patch          write new to stdout
+     seams merge base ours theirs   three-way merge to stdout, conflicts marked
+   Exit status: 0 same / clean, 1 different / conflicts, 2 trouble (like diff and git merge-file). */
 #include "seams.h"
 #include <inttypes.h>
 #include <stdio.h>
@@ -140,15 +144,102 @@ static void print_unified(const side *a, const side *b, const seams_script *s, u
     }
 }
 
+typedef struct {
+    seams_line_table a, b;
+    seams_script script;
+    double ms;
+} diff_result;
+
+static uint64_t engine_flags(int minimal) {
+    const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
+    return (avx2 ? SEAMS_FLAG_AVX2 : 0) | (minimal ? 0 : SEAMS_FLAG_FAST);
+}
+
+static void run_diff(const uint8_t *a, uint64_t a_len, const uint8_t *b, uint64_t b_len, uint64_t flags, diff_result *r) {
+    const uint64_t na = count_lines(a, a_len), nb = count_lines(b, b_len), ids = na + nb;
+    r->a = (seams_line_table){aligned(na, 4), aligned(na, 4), aligned(na, 8), aligned(na, 4), 0, na};
+    r->b = (seams_line_table){aligned(nb, 4), aligned(nb, 4), aligned(nb, 8), aligned(nb, 4), 0, nb};
+    uint64_t slots = 16;
+    while (slots < 2 * ids) slots *= 2;
+    seams_intern intern = {aligned(slots, 8), aligned(ids, 8), aligned(ids, 8), aligned(ids, 4),
+                           aligned(ids, 4), aligned(ids, 4), slots, ids, 0, 0};
+    seams_diff_scratch scratch = {&intern, aligned(na, 4), aligned(nb, 4), aligned(na, 4), aligned(nb, 4),
+                                  aligned(na, 1), aligned(nb, 1), aligned(ids + 3, 8), aligned(ids + 3, 8), ids + 3};
+    const uint64_t records = (na < nb ? na : nb) + 1;
+    r->script = (seams_script){aligned(records, 4), aligned(records, 4), aligned(records, 4), aligned(records, 4), 0, records};
+    seams_diff_input in = {a, a_len, b, b_len, &r->a, &r->b, flags};
+    const double t0 = now_ms();
+    const int status = seams_diff(&in, &scratch, &r->script);
+    r->ms = now_ms() - t0;
+    if (status != SEAMS_OK) { fprintf(stderr, "seams: diff failed (%d)\n", status); exit(2); }
+}
+
+static void write_all(const uint8_t *p, uint64_t n) {
+    if (fwrite(p, 1, n, stdout) != n || fflush(stdout) != 0) { perror("seams: write"); exit(2); }
+}
+
+static int command_patch(const char *old_path, const char *new_path) {
+    uint64_t a_len, b_len;
+    const uint8_t *a = read_all(old_path, &a_len), *b = read_all(new_path, &b_len);
+    diff_result d;
+    run_diff(a, a_len, b, b_len, engine_flags(0), &d);
+    seams_patch_input in = {a, a_len, &d.a, b, b_len, &d.b, &d.script, 0, 0, 0, 0, 0};
+    in.out_capacity = seams_patch_size(&in);
+    in.out = aligned(in.out_capacity, 1);
+    if (seams_write_patch(&in) != SEAMS_OK) { fputs("seams: could not write the patch\n", stderr); return 2; }
+    write_all(in.out, in.out_len);
+    return d.script.count ? 1 : 0;
+}
+
+static int command_apply(const char *old_path, const char *patch_path) {
+    uint64_t a_len, patch_len;
+    const uint8_t *a = read_all(old_path, &a_len), *patch = read_all(patch_path, &patch_len);
+    if (patch_len < SEAMS_PATCH_HEADER_BYTES) { fprintf(stderr, "seams: %s is not a seams patch\n", patch_path); return 2; }
+    uint64_t b_len;
+    memcpy(&b_len, patch + 24, sizeof b_len);
+    const uint64_t na = count_lines(a, a_len);
+    seams_line_table ta = {aligned(na, 4), aligned(na, 4), aligned(na, 8), aligned(na, 4), 0, na};
+    const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
+    if ((avx2 ? seams_scan_avx2(a, a_len, &ta) : seams_scan_scalar(a, a_len, &ta)) != SEAMS_OK) { fputs("seams: scan failed\n", stderr); return 2; }
+    seams_patch_input in = {a, a_len, &ta, 0, 0, 0, 0, patch, patch_len, aligned(b_len, 1), b_len, 0};
+    const int status = seams_apply_patch(&in);
+    if (status == SEAMS_EWRONGBASE) { fprintf(stderr, "seams: %s was made from a different %s\n", patch_path, old_path); return 2; }
+    if (status != SEAMS_OK) { fprintf(stderr, "seams: %s is damaged (%d)\n", patch_path, status); return 2; }
+    write_all(in.out, in.out_len);
+    return 0;
+}
+
+static int command_merge(const char *base_path, const char *ours_path, const char *theirs_path) {
+    uint64_t o_len, x_len, y_len;
+    const uint8_t *o = read_all(base_path, &o_len), *x = read_all(ours_path, &x_len), *y = read_all(theirs_path, &y_len);
+    diff_result to_ours, to_theirs;
+    run_diff(o, o_len, x, x_len, engine_flags(0), &to_ours);
+    run_diff(o, o_len, y, y_len, engine_flags(0), &to_theirs);
+    /* every conflict adds about 50 bytes of markers, and there can be one per changed region */
+    const uint64_t cap = 2 * (o_len + x_len + y_len) + 64 * (to_ours.script.count + to_theirs.script.count + 1);
+    seams_merge_input in = {o, o_len, &to_ours.a, x, x_len, &to_ours.b, y, y_len, &to_theirs.b,
+                            &to_ours.script, &to_theirs.script, aligned(cap, 1), cap, 0, 0};
+    if (seams_merge(&in) != SEAMS_OK) { fputs("seams: merge failed\n", stderr); return 2; }
+    write_all(in.out, in.out_len);
+    if (in.conflicts) fprintf(stderr, "seams: %" PRIu64 " conflict%s\n", in.conflicts, in.conflicts == 1 ? "" : "s");
+    return in.conflicts ? 1 : 0;
+}
+
 static void usage(void) {
-    fputs("usage: seams [-U n] [-L label] [--stat] [--time] [--color|--no-color] old new\n", stderr);
+    fputs("usage: seams [-U n] [-L label] [--stat] [--time] [--minimal] [--color|--no-color] old new\n"
+          "       seams patch old new\n"
+          "       seams apply old patch\n"
+          "       seams merge base ours theirs\n", stderr);
     exit(2);
 }
 
 int main(int argc, char **argv) {
+    if (argc == 4 && strcmp(argv[1], "patch") == 0) return command_patch(argv[2], argv[3]);
+    if (argc == 4 && strcmp(argv[1], "apply") == 0) return command_apply(argv[2], argv[3]);
+    if (argc == 5 && strcmp(argv[1], "merge") == 0) return command_merge(argv[2], argv[3], argv[4]);
     uint64_t context = 3;
     const char *label[2] = {0, 0}, *path[2] = {0, 0};
-    int labels = 0, paths = 0, stat = 0, timing = 0;
+    int labels = 0, paths = 0, stat = 0, timing = 0, minimal = 0;
     colour = isatty(STDOUT_FILENO);
     for (int i = 1; i < argc; ++i) {
         const char *x = argv[i];
@@ -157,6 +248,7 @@ int main(int argc, char **argv) {
         else if (strcmp(x, "-L") == 0 && i + 1 < argc && labels < 2) label[labels++] = argv[++i];
         else if (strcmp(x, "--stat") == 0) stat = 1;
         else if (strcmp(x, "--time") == 0) timing = 1;
+        else if (strcmp(x, "--minimal") == 0) minimal = 1;
         else if (strcmp(x, "--color") == 0) colour = 1;
         else if (strcmp(x, "--no-color") == 0) colour = 0;
         else if (x[0] == '-' && x[1]) usage();
@@ -169,24 +261,10 @@ int main(int argc, char **argv) {
 
     uint64_t a_len, b_len;
     uint8_t *a = read_all(path[0], &a_len), *b = read_all(path[1], &b_len);
-    const double t0 = now_ms();
-    const uint64_t na = count_lines(a, a_len), nb = count_lines(b, b_len), ids = na + nb;
-    seams_line_table ta = {aligned(na, 4), aligned(na, 4), aligned(na, 8), aligned(na, 4), 0, na};
-    seams_line_table tb = {aligned(nb, 4), aligned(nb, 4), aligned(nb, 8), aligned(nb, 4), 0, nb};
-    uint64_t slots = 16;
-    while (slots < 2 * ids) slots *= 2;
-    seams_intern intern = {aligned(slots, 8), aligned(ids, 8), aligned(ids, 8), aligned(ids, 4),
-                           aligned(ids, 4), aligned(ids, 4), slots, ids, 0, 0};
-    seams_diff_scratch scratch = {&intern, aligned(na, 4), aligned(nb, 4), aligned(na, 4), aligned(nb, 4),
-                                  aligned(na, 1), aligned(nb, 1), aligned(ids + 3, 8), aligned(ids + 3, 8), ids + 3};
-    const uint64_t records = (na < nb ? na : nb) + 1;
-    seams_script script = {aligned(records, 4), aligned(records, 4), aligned(records, 4), aligned(records, 4), 0, records};
-    const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
-    seams_diff_input in = {a, a_len, b, b_len, &ta, &tb, avx2 ? SEAMS_FLAG_AVX2 : 0};
-    const double t1 = now_ms();
-    const int status = seams_diff(&in, &scratch, &script);
-    const double t2 = now_ms();
-    if (status != SEAMS_OK) { fprintf(stderr, "seams: diff failed (%d)\n", status); return 2; }
+    diff_result d;
+    run_diff(a, a_len, b, b_len, engine_flags(minimal), &d);
+    const seams_script script = d.script;
+    const uint64_t na = d.a.count, nb = d.b.count;
 
     uint64_t deleted = 0, inserted = 0;
     for (uint64_t r = 0; r < script.count; ++r) { deleted += script.a_count[r]; inserted += script.b_count[r]; }
@@ -197,11 +275,11 @@ int main(int argc, char **argv) {
         if (colour) fputs(BOLD, stdout);
         printf("--- %s\n+++ %s\n", label[0] ? label[0] : path[0], label[1] ? label[1] : path[1]);
         if (colour) fputs(RESET, stdout);
-        const side sa = {a, &ta}, sb = {b, &tb};
+        const side sa = {a, &d.a}, sb = {b, &d.b};
         print_unified(&sa, &sb, &script, context);
     }
     fflush(stdout);
     if (timing)
-        fprintf(stderr, "seams_diff: %.2f ms for %" PRIu64 " + %" PRIu64 " lines (setup %.2f ms)\n", t2 - t1, na, nb, t1 - t0);
+        fprintf(stderr, "seams_diff: %.2f ms for %" PRIu64 " + %" PRIu64 " lines\n", d.ms, na, nb);
     return script.count ? 1 : 0;
 }
