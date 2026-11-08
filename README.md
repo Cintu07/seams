@@ -1,5 +1,7 @@
 # seams
 
+**Site and live demo: [cintu07.github.io/seams](https://cintu07.github.io/seams)**
+
 A line diff and patch engine written in NASM x86-64. The same engine is also hand-written in WebAssembly text (`wasm/seams.wat`) for the browser.
 
 `seams_diff` takes two byte buffers and returns a minimal line edit script. `seams_apply` takes the
@@ -14,10 +16,16 @@ runs are the gaps between them.
    Those lines pair up in any minimal script, so the next steps only see the lines between them.
 3. `hash_lines.asm`: 64-bit hash per remaining line.
 4. `intern.asm`: map each distinct line to a dense id (open addressing, bytes compared on every hash match).
-5. `myers.asm`: drop lines that never occur on the other side, then exact linear-space Myers
-   (middle snake, no heuristics). Output is one `changed` byte per line.
+5. `myers.asm`: drop lines that never occur on the other side, then linear-space Myers (middle
+   snake). Exact by default. With `SEAMS_FLAG_FAST` each middle-snake search gets a budget of
+   `max(4096, 2^(bits(n)/2))` rounds and, when it runs out, splits at the furthest point the forward
+   search reached: on 40,000 shuffled lines that is 5.4 s down to 0.9 s for a script 0.33% longer.
+   Output is one `changed` byte per line.
 6. `emit.asm`: turn the changed bytes into change records.
 7. `apply.asm`: copy byte ranges from both buffers and check the script is well formed.
+8. `patch.asm`: write and apply self-contained patches (they carry the inserted bytes, so the new file
+   is not needed to apply them). A patch records the length and hash of its base and refuses any other.
+9. `merge.asm`: three-way merge of two scripts from the same base, diff3 style, with conflict markers.
 
 ## WebAssembly core
 
@@ -45,6 +53,21 @@ node web/serve.mjs          # http://localhost:4174/ ; pick or drop two files
 Up/Down, Home/End, `n`/`p` for the next/previous change. A 1M-line diff scrolls within the display
 frame budget (p99 under 8 ms at 145 Hz) with 0.2 ms of CPU per frame; `web/bench_viewer.mjs` measures it.
 
+## Packs: diff ahead of time
+
+`tools/seams-pack.mjs` diffs two files once (in CI, on a server) and writes a `.seamspack` with both
+files, their line tables, the edit script and the highlighter's line states. The viewer opens it with
+nothing left to compute: a 1M-line diff shows its first frame in 34 ms instead of about 500, measured
+on a laptop on battery (`bench/throttle.mjs`).
+
+```sh
+node tools/seams-pack.mjs old.ts new.ts -o change.seamspack
+```
+
+```js
+viewer.setPack('/change.seamspack');            // seams-diff, or <SeamsDiff pack="..." /> in React
+```
+
 ## Use it
 
 `make` builds `build/seams`, a command-line diff that prints a standard unified diff (`patch` and
@@ -54,6 +77,11 @@ frame budget (p99 under 8 ms at 145 Hz) with 0.2 ms of CPU per frame; `web/bench
 seams old.c new.c              # coloured unified diff, exit status 1 if they differ
 seams -U 1 old.c new.c > fix.patch
 seams --stat --time big.old big.new
+seams --minimal old.c new.c    # the smallest diff, however long it takes (default: bounded time)
+
+seams patch old new > change.seams   # self-contained patch: a 100-edit change to a 32 MB file is 7.5 KB
+seams apply old change.seams > new   # refused if old is not the file the patch was made from
+seams merge base ours theirs > out   # exit 1 and conflict markers when both sides changed a region
 ```
 
 To let git use it, put `build/seams` and `tools/seams-git` on your PATH, then:
@@ -81,7 +109,11 @@ make bench
 - the scanner against a C reference, with guard bytes and callee-saved register checks;
 - 200,000 random file pairs plus 118 edge cases, each checked for round trip, edit count equal to
   textbook Myers, script shape, and scalar/AVX2 agreement;
-- the same checks on a build whose hash is `length & 1`, so every line collides.
+- the same checks on a build whose hash is `length & 1`, so every line collides;
+- the cost cutoff on 40,000 shuffled lines: round trip, scalar/AVX2 agreement, never shorter than exact;
+- 100,000 patch and merge cases (`test/v2_harness.c`): patches round trip and refuse a wrong base, a
+  cut or a damaged patch; merges match `ref/ref_merge.c` byte for byte, give back the edited side when
+  the other is untouched, and take an identical edit on both sides once.
 
 `make bench` compares against imara-diff and `git diff --no-index` on generated fixtures, then on a
 corpus of real edits: 3,000 old/new pairs of `.c` and `.h` files from Linux kernel commits, pulled
@@ -92,4 +124,5 @@ On the kernel corpus seams takes 166 ms against 319 ms for imara-diff's default 
 scripts are 188 edits shorter in total. Most real edits leave long identical stretches at both ends
 of a file; seams skips them before hashing. On generated files with sparse edits it is level with or
 faster than imara. On dense edits (10,000 changes spread through the file) it is 2.2 to 2.7 times
-slower, because it always returns the minimal script and imara's default gives that up for speed.
+slower with `--minimal`, because it returns the minimal script and imara's default gives that up for
+speed. The bounded default (`SEAMS_FLAG_FAST`) has not been benchmarked against imara yet.
