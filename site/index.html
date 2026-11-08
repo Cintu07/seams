@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seams · a diff viewer for files too big for everything else</title>
+<meta name="description" content="seams opens a million-line diff in a fifth of a second and scrolls it at your screen's refresh rate. The diff engine is hand-written assembly and WebAssembly; the view is drawn with WebGL.">
+<meta name="theme-color" content="#c3dbc8">
+<meta property="og:title" content="seams">
+<meta property="og:description" content="A diff viewer for files too big for everything else: a million lines in a fifth of a second, scrolled at your screen's refresh rate.">
+<meta property="og:image" content="https://cintu07.github.io/seams/assets/share.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/icon.svg">
+<link rel="preload" href="fonts/dotgothic16-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site.css">
+<script>try { if (localStorage.getItem('seams-site-theme') === 'dusk') document.documentElement.dataset.theme = 'dusk'; } catch (e) {}</script>
+</head>
+<body>
+
+<header class="bar">
+  <a class="mark" href="#top">seams</a>
+  <nav>
+    <a href="#try">try it</a>
+    <a href="#numbers">numbers</a>
+    <a href="#uses">uses</a>
+    <a href="#how">how</a>
+    <a href="#get">get it</a>
+    <a href="https://github.com/Cintu07/seams">github</a>
+  </nav>
+  <button class="theme" id="theme" type="button" aria-label="switch between sage and dusk"><span id="mascotSmall" aria-hidden="true"></span></button>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <canvas id="city" aria-hidden="true"></canvas>
+  <div class="hero-card">
+    <h1>seams</h1>
+    <p class="tagline">a diff viewer for files too big for everything else.</p>
+    <p class="sub">a million-line diff opens in a fifth of a second and scrolls at your screen's refresh rate. the diff engine is hand-written assembly, ported to hand-written webassembly; the view is drawn with webgl.</p>
+    <p class="actions">
+      <a class="btn" href="#try">open the demo</a>
+      <button class="btn ghost" type="button" id="millionTop">try a million lines</button>
+    </p>
+  </div>
+  <div class="mascot" id="mascot" aria-hidden="true"></div>
+</section>
+
+<section class="try" id="try">
+  <div class="section-head">
+    <h2>try it</h2>
+    <p>this is seams itself, rendering a real change to its own source. scroll it, press <kbd>n</kbd> for the next change, <kbd>v</kbd> for split view, <kbd>ctrl</kbd> <kbd>f</kbd> to find. drag to select, copy works.</p>
+  </div>
+  <div class="viewer-frame">
+    <div class="viewer-tools">
+      <div class="pick" role="group" aria-label="what to diff">
+        <button type="button" class="chip on" data-demo="own">seams' own code</button>
+        <button type="button" class="chip" data-demo="million">1,000,000 lines</button>
+        <label class="chip file">your two files<input type="file" id="files" multiple></label>
+      </div>
+      <button type="button" class="chip" id="viewToggle" aria-pressed="false">split view</button>
+    </div>
+    <div class="viewer" id="viewer"></div>
+    <p class="viewer-stats" id="stats" aria-live="polite">loading…</p>
+  </div>
+  <p class="note">your files never leave this tab: they are read, diffed and drawn on your machine.</p>
+</section>
+
+<section class="numbers" id="numbers">
+  <div class="section-head">
+    <h2>numbers</h2>
+    <p>one laptop, one browser, the same files and the same scroll gestures, against <a href="https://diffs.com">@pierre/diffs</a> 1.6.4 at its best settings with highlighting on.</p>
+  </div>
+  <figure class="chart">
+    <img src="assets/chart.webp" width="1600" height="900" alt="bar charts comparing seams and pierre's diffs on a one million line diff: first screen 0.19 s against 5.98 s, fully highlighted 0.49 s against 41.4 s, memory 113 MiB against 570 MiB, scrolling 145 fps against 48 fps" loading="lazy">
+  </figure>
+  <div class="tiles">
+    <div class="tile"><b>34 ms</b><span>first screen of a 1M-line diff packed ahead of time, on a laptop at 16% battery</span></div>
+    <div class="tile"><b>7.5 KB</b><span>a self-contained patch for a 100-edit change to a 32 MB file</span></div>
+    <div class="tile"><b>5.4 KB</b><span>the whole diff engine, as webassembly</span></div>
+  </div>
+  <p class="note">fair caveats: pierre computes its diff with jsdiff from two whole files, which is most of its first-screen time; its grammars are richer than seams' lexers; it has comments, annotations and a merge ui that seams does not. the scrolling gap holds either way.</p>
+</section>
+
+<section class="uses" id="uses">
+  <div class="section-head">
+    <h2>what it's for</h2>
+    <p>most diffs are small, and any viewer is fine for those. seams is for the ones that break the others.</p>
+  </div>
+  <div class="cards" id="cards">
+    <article class="card" data-icon="wall"><h3>the diff github won't show</h3><p>lockfiles, generated code, snapshots, vendored dependencies, migrations. "large diffs are not rendered" is where seams starts.</p></article>
+    <article class="card" data-icon="bot"><h3>reviewing what an agent wrote</h3><p>coding agents change thousands of lines at once. you still have to read them, and the review tool should not be the slow part.</p></article>
+    <article class="card" data-icon="table"><h3>data, not code</h3><p>sql dumps, json exports, csv, logs, terraform state. text files with a million lines are normal outside of source trees.</p></article>
+    <article class="card" data-icon="gear"><h3>diff once, in ci</h3><p>seams-pack diffs on the server and writes a pack; the browser opens it with nothing left to compute. a pr page that is instant on any laptop.</p></article>
+    <article class="card" data-icon="plug"><h3>inside your own tool</h3><p>a small npm package with a plain api and a react component: code review apps, editors, internal dashboards, docs.</p></article>
+    <article class="card" data-icon="merge"><h3>patches and merges</h3><p>the cli writes patches that carry their own bytes and refuse the wrong base, and does three-way merges with conflict markers.</p></article>
+  </div>
+</section>
+
+<section class="how" id="how">
+  <div class="section-head">
+    <h2>how it works</h2>
+    <p>two files go in as bytes. nothing is turned into strings, nothing becomes a dom node.</p>
+  </div>
+  <ol class="pipe">
+    <li><b>scan</b><span>find every newline, 32 bytes at a time with avx2, 16 with simd128</span></li>
+    <li><b>hash</b><span>one 64-bit hash per line, 8 bytes at a time</span></li>
+    <li><b>intern</b><span>each distinct line becomes a number; the diff runs on numbers only</span></li>
+    <li><b>trim</b><span>skip the common start and end, which is most of a real edit</span></li>
+    <li><b>myers</b><span>linear-space myers on what is left, with a budget so the worst case stays bounded</span></li>
+    <li><b>draw</b><span>every glyph is one instanced quad from a glyph atlas; one webgl draw call a frame, only the rows on screen</span></li>
+  </ol>
+  <p class="note">the native engine is nasm x86-64; the browser engine is the same pipeline in hand-written webassembly. both produce identical edit scripts, checked on hundreds of thousands of random pairs.</p>
+</section>
+
+<section class="get" id="get">
+  <div class="section-head">
+    <h2>get it</h2>
+    <p>three ways in. none of them phone home.</p>
+  </div>
+  <div class="ways">
+    <div class="way">
+      <h3>in a web page</h3>
+<pre><code>import { createDiffViewer } from 'seams-diff';
+
+const viewer = createDiffViewer(el, { theme: 'sage' });
+await viewer.setFiles(before, after, { name: 'main.ts' });</code></pre>
+      <p>react: <code>&lt;SeamsDiff oldFile={a} newFile={b} /&gt;</code> from <code>seams-diff/react</code>. the npm release is coming; until then <code>node pkg/build.mjs</code> builds it from the repo.</p>
+    </div>
+    <div class="way">
+      <h3>on the command line</h3>
+<pre><code>make                          # linux, x86-64, nasm + gcc
+seams old new                 # unified diff
+seams patch old new > p.seams
+seams apply old p.seams > new
+seams merge base ours theirs</code></pre>
+      <p>as a git diff driver: <code>GIT_EXTERNAL_DIFF=tools/seams-git git diff</code>.</p>
+    </div>
+    <div class="way">
+      <h3>ahead of time</h3>
+<pre><code>node tools/seams-pack.mjs old new -o pr.seamspack
+
+viewer.setPack('/pr.seamspack')</code></pre>
+      <p>diff in ci or on your server, serve the pack compressed, open it with no diffing in the browser.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>seams, by <a href="https://cintu07.github.io">pawan kalyan</a></span>
+  <span><a href="https://github.com/Cintu07/seams">source</a> · fonts: ibm plex mono, dotgothic16 (ofl)</span>
+</footer>
+
+<script type="module" src="main.mjs"></script>
+</body>
+</html>

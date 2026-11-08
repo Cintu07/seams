@@ -13,3 +13,4 @@
 **/target/
 /pkg/dist/
 *.tgz
+/_site/
