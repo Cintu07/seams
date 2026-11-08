@@ -11,6 +11,8 @@ const out = join(here, '..', 'build');
 const constants = { ...CONST, HASH_MULTIPLIER: '0x9e3779b97f4a7c15' };
 
 function preprocess(text, flags) {
+  // a checkout with CRLF endings must not keep ;;IF blocks: the BAD_HASH one makes every line collide
+  text = text.replace(/\r\n/g, '\n');
   text = text.replace(/;;IF (\w+)\n([\s\S]*?);;END\n/g, (_, name, body) => (flags.has(name) ? body : ''));
   const substitute = (code) => code
     .replace(/#(\w+)/g, (match, name) => {
