@@ -13,11 +13,14 @@ mkdirSync(dist, { recursive: true });
 const files = {
   'web/embed.mjs': 'index.mjs', 'web/renderer.mjs': 'renderer.mjs', 'web/interact.mjs': 'interact.mjs',
   'web/lex.mjs': 'lex.mjs', 'web/words.mjs': 'words.mjs', 'web/look.mjs': 'look.mjs', 'web/diff_worker.mjs': 'diff_worker.mjs',
+  'web/pack.mjs': 'pack.mjs', 'web/layout.mjs': 'rows.mjs',
   'wasm/seams.mjs': 'seams.mjs', 'wasm/layout.mjs': 'layout.mjs',
 };
 for (const [from, to] of Object.entries(files)) {
   let s = readFileSync(join(root, from), 'utf8');
   s = s.replace("'../wasm/seams.mjs'", "'./seams.mjs'").replace("'../build/seams.wasm'", "'./seams.wasm'");
+  // web/layout.mjs (row layout) ships as rows.mjs, beside wasm's own layout.mjs (descriptor offsets)
+  if (from.startsWith('web/')) s = s.replace("from './layout.mjs'", "from './rows.mjs'");
   if (s.includes('../')) throw new Error(`${from} still reaches outside the package`);
   writeFileSync(join(dist, to), s);
 }

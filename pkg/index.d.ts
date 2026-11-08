@@ -35,6 +35,8 @@ export interface DiffStats {
 }
 export interface DiffViewer {
   setFiles(oldFile: FileInput, newFile: FileInput, options?: FileOptions): Promise<DiffStats | null>;
+  /** Open a .seamspack made ahead of time (tools/seams-pack.mjs): a URL, the bytes, or a Blob. */
+  setPack(pack: string | URL | ArrayBuffer | ArrayBufferView | Blob): Promise<DiffStats | null>;
   readonly stats: DiffStats | null;
   setView(view: 'unified' | 'split'): void;
   setTheme(theme: 'sage' | 'dusk' | Theme): void;
