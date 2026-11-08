@@ -16,6 +16,8 @@ const wasmFile = process.argv[3] ?? join(root, 'build/seams.wasm');
 const fuzzPairs = Number(process.env.SEAMS_FUZZ_PAIRS ?? 50000);
 const startSeed = Number(process.env.SEAMS_FUZZ_SEED ?? 0x5ea0d1f);
 const seams = await loadSeams(readFileSync(wasmFile));
+// SEAMS_FAST=1: every diff runs with the cost cutoff, native and wasm alike
+const fast = !!process.env.SEAMS_FAST;
 const enc = new TextEncoder();
 
 let seed = startSeed >>> 0 || 1;
@@ -81,6 +83,20 @@ function* fuzzCases(pairs) {
   }
 }
 
+// big pairs drawn from the same few lines in random order: the exact search runs long, so with
+// SEAMS_FAST the budget runs out and both engines have to cut at the same point
+function* cutoffCases(n) {
+  for (let k = 0; k < n; ++k) {
+    const lines = 6000 + 4000 * k, side = () => {
+      let text = '';
+      for (let i = 0; i < lines; ++i) text += `line ${random() % 48}
+`;
+      return enc.encode(text);
+    };
+    yield [side(), side()];
+  }
+}
+
 function* corpusCases(dir) {
   if (!dir || !existsSync(join(dir, 'count'))) return;
   const count = Number(readFileSync(join(dir, 'count'), 'utf8'));
@@ -120,7 +136,7 @@ const sameRecords = (w, n) => {
 };
 
 const scratch = mkdtempSync(join(tmpdir(), 'seams-wasm-'));
-const counts = { edge: 0, fuzz: 0, corpus: 0 };
+const counts = { edge: 0, fuzz: 0, corpus: 0, cutoff: 0 };
 let index = 0;
 function checkAll(kind, cases, batchSize) {
   let batch = [];
@@ -129,8 +145,8 @@ function checkAll(kind, cases, batchSize) {
     batch.forEach(([a, b], k) => {
       const n = native[k];
       if (n.status !== 0) fail(`native status ${n.status}`, index, a, b);
-      const vector = seams.diff(a, b, { simd: true });
-      const scalar = seams.diff(a, b, { simd: false });
+      const vector = seams.diff(a, b, { simd: true, fast });
+      const scalar = seams.diff(a, b, { simd: false, fast });
       if (!sameRecords(scalar, n)) fail('scalar script differs from native', index, a, b);
       if (!sameRecords(vector, n)) fail('SIMD script differs from native', index, a, b);
       const rebuilt = seams.apply(vector);
@@ -157,8 +173,9 @@ try {
   checkAll('edge', edgeCases(), 500);
   checkAll('fuzz', fuzzCases(fuzzPairs), 5000);
   checkAll('corpus', corpusCases(process.env.SEAMS_CORPUS), 300);
+  checkAll('cutoff', cutoffCases(6), 6);
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }
-console.log(`PASS [wasm ${buildName}]: ${counts.edge} edge, ${counts.fuzz} fuzz (seed 0x${startSeed.toString(16)}), ` +
-  `${counts.corpus} corpus pairs: scalar and SIMD scripts identical to native, apply round trip, bad scripts rejected`);
+console.log(`PASS [wasm ${buildName}${fast ? ', fast' : ''}]: ${counts.edge} edge, ${counts.fuzz} fuzz (seed 0x${startSeed.toString(16)}), ` +
+  `${counts.corpus} corpus, ${counts.cutoff} large shuffled pairs: scalar and SIMD scripts identical to native, apply round trip, bad scripts rejected`);

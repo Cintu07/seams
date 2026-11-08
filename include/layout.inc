@@ -19,6 +19,9 @@
 %define SEAMS_SIDE_A 0
 %define SEAMS_SIDE_B 1
 %define SEAMS_FLAG_AVX2 1
+%define SEAMS_FLAG_FAST 2
+; with FAST, a middle-snake search gives up after max(this, 2^(bits(n)/2)) rounds
+%define SEAMS_MIN_COST_LIMIT 4096
 %define SEAMS_HASH_MULTIPLIER 0x9e3779b97f4a7c15
 %define SEAMS_KV_UNREACHED_LOW -1
 %define SEAMS_KV_UNREACHED_HIGH 0x7fffffffffffffff
@@ -93,6 +96,76 @@ struc seams_apply_input
     .out_len: resq 1
 endstruc
 
+%define SEAMS_EWRONGBASE -5
+%define SEAMS_PATCH_MAGIC 0x4d414553           ; "SEAM" read as a little-endian u32
+%define SEAMS_PATCH_VERSION 1
+%define SEAMS_PATCH_HEADER_BYTES 40
+%define SEAMS_PATCH_RECORD_BYTES 16
+
+struc seams_patch_input
+    .a_bytes: resq 1
+    .a_len: resq 1
+    .a_lines: resq 1
+    .b_bytes: resq 1
+    .b_len: resq 1
+    .b_lines: resq 1
+    .script: resq 1
+    .patch: resq 1
+    .patch_len: resq 1
+    .out: resq 1
+    .out_capacity: resq 1
+    .out_len: resq 1
+endstruc
+
+struc seams_patch_header
+    .magic: resd 1
+    .version: resd 1
+    .a_len: resq 1
+    .a_hash: resq 1
+    .b_len: resq 1
+    .record_count: resq 1
+endstruc
+
+struc seams_patch_record
+    .a_start: resd 1
+    .a_count: resd 1
+    .b_count: resd 1
+    .byte_count: resd 1
+endstruc
+
+; a file as merge sees it: bytes, length, line table. base, ours and theirs are three of these
+struc seams_merge_side
+    .bytes: resq 1
+    .len: resq 1
+    .lines: resq 1
+endstruc
+
+struc seams_merge_input
+    .base: resb seams_merge_side_size
+    .ours: resb seams_merge_side_size
+    .theirs: resb seams_merge_side_size
+    .to_ours: resq 1
+    .to_theirs: resq 1
+    .out: resq 1
+    .out_capacity: resq 1
+    .out_len: resq 1
+    .conflicts: resq 1
+endstruc
+
+; internal: seams_merge's running state, on its stack. the deltas are signed: how far
+; ours (theirs) has moved relative to base so far, in lines
+struc seams_merge_frame
+    .ours_delta: resq 1
+    .theirs_delta: resq 1
+    .ours_growth: resq 1        ; this chunk's lines added minus removed, ours
+    .theirs_growth: resq 1
+    .ours_changed: resq 1
+    .theirs_changed: resq 1
+    .ours_text: resq 1          ; where ours' version of a chunk changed on both sides starts
+    .ours_text_len: resq 1
+    .padding: resq 1
+endstruc
+
 ; internal: what the matching recursion reads, built by seams_diff on its stack
 struc seams_match
     .work_a: resq 1
@@ -103,6 +176,8 @@ struc seams_match
     .changed_b: resq 1
     .kv_forward: resq 1
     .kv_backward: resq 1
+    .cost_limit: resq 1         ; 0 means search until the paths meet (exact)
+    .padding: resq 1
 endstruc
 
 ; internal: one middle-snake search box, all values signed 64-bit

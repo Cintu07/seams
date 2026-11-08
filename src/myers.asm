@@ -256,14 +256,78 @@ seams_backward_round:
 %undef ids_b
 %undef id_a
 
+; out of budget: split at the furthest point the forward search reached. any point inside
+; the box gives a correct script; the furthest one keeps it close to minimal
+%define match rdi
+%define box rsi
+%define kv r8
+%define diagonal r9
+%define x r10
+%define y r11
+%define best rax
+%define reach rdx
+%define best_x rcx
+seams_cut_short:
+    mov kv, [match + seams_match.kv_forward]
+    mov best, [box + seams_box.off1]
+    add best, [box + seams_box.off2]
+    xor best_x, best_x
+    mov diagonal, [box + seams_box.fmax]
+.next_diagonal:
+    cmp diagonal, [box + seams_box.fmin]
+    jl .all_diagonals_seen
+    mov x, [kv + diagonal * SEAMS_U64_BYTES]
+    mov y, x
+    sub y, diagonal
+    cmp x, [box + seams_box.lim1]
+    jg .not_inside
+    cmp y, [box + seams_box.lim2]
+    jg .not_inside
+    cmp y, [box + seams_box.off2]
+    jl .not_inside
+    lea reach, [x + y]
+    cmp reach, best
+    jle .not_inside
+    mov best, reach
+    mov [box + seams_box.split1], x
+    mov [box + seams_box.split2], y
+.not_inside:
+    sub diagonal, 2
+    jmp .next_diagonal
+.all_diagonals_seen:
+    ; a split at either corner would not shrink the box
+    mov best_x, best
+    xor eax, eax
+    mov reach, [box + seams_box.off1]
+    add reach, [box + seams_box.off2]
+    cmp best_x, reach
+    jle .no_split
+    mov reach, [box + seams_box.lim1]
+    add reach, [box + seams_box.lim2]
+    cmp best_x, reach
+    jge .no_split
+    mov eax, 1
+.no_split:
+    ret
+%undef match
+%undef box
+%undef kv
+%undef diagonal
+%undef x
+%undef y
+%undef best
+%undef reach
+%undef best_x
+
 %define match r12
 %define box rbx
 %define value rax
 %define kv rcx
 %define forward_centre r13
 %define corner rdx
+%define cost r14
 seams_split:
-    save_registers rbx, r12, r13
+    save_registers rbx, r12, r13, r14, r15
     mov match, rdi
     mov box, rsi
     mov value, [box + seams_box.off1]
@@ -291,6 +355,7 @@ seams_split:
     sub forward_centre, value
     and forward_centre, 1
     mov [box + seams_box.odd], forward_centre
+    xor cost, cost
 .next_cost:
     mov rdi, match
     mov rsi, box
@@ -301,9 +366,20 @@ seams_split:
     mov rsi, box
     call seams_backward_round
     test eax, eax
+    jnz .split_found
+    inc cost
+    mov value, [match + seams_match.cost_limit]
+    test value, value
+    jz .next_cost
+    cmp cost, value
+    jb .next_cost
+    mov rdi, match
+    mov rsi, box
+    call seams_cut_short
+    test eax, eax
     jz .next_cost
 .split_found:
-    restore_registers rbx, r12, r13
+    restore_registers rbx, r12, r13, r14, r15
     ret
 %undef match
 %undef box
@@ -311,6 +387,7 @@ seams_split:
 %undef kv
 %undef forward_centre
 %undef corner
+%undef cost
 
 ; limit = how many ids both runs can still have in common
 %macro box_overlap_limit 0

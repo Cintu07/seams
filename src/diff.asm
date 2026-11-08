@@ -232,6 +232,22 @@ seams_fill_match:
     mov field, [scratch + seams_diff_scratch.kv_backward]
     lea field, [field + centre * SEAMS_U64_BYTES]
     mov [match + seams_match.kv_backward], field
+    ; FAST: a search budget that grows with the square root of what is left to match
+    xor field, field
+    test qword [input + seams_diff_input.flags], SEAMS_FLAG_FAST
+    jz .budget_set
+    lea field, [kept_a + kept_b]
+    or field, 1
+    bsr centre, field
+    inc centre
+    shr centre, 1
+    mov field, 1
+    shl field, cl
+    mov centre, SEAMS_MIN_COST_LIMIT
+    cmp field, centre
+    cmovb field, centre
+.budget_set:
+    mov [match + seams_match.cost_limit], field
     ret
 %undef input
 %undef scratch

@@ -10,7 +10,11 @@ enum {
     SEAMS_ENOSPC = -3,
     SEAMS_EBADSCRIPT = -4,
     SEAMS_ALIGNMENT = 32,
-    SEAMS_FLAG_AVX2 = 1
+    SEAMS_FLAG_AVX2 = 1,
+    /* Bounded time on files with little in common: a middle-snake search that runs past
+       max(4096, 2^(bits(n)/2)) rounds splits at its furthest point instead. The script is
+       still exact to apply, but may be longer than minimal. Without it diff is minimal. */
+    SEAMS_FLAG_FAST = 2
 };
 
 #define SEAMS_MAX_BYTES UINT32_MAX
@@ -112,10 +116,64 @@ int seams_intern_lines(const uint8_t *bytes, seams_line_table *lines, seams_inte
 /* Fills the script, and line_start/line_len of a_lines and b_lines. Lines inside the
    common byte prefix and suffix of the two files are left out of hashing and
    interning, so their line_hash and line_id entries are not written. Minimal: the
-   sum of a_count + b_count over all records is the smallest possible. */
+   sum of a_count + b_count over all records is the smallest possible, unless
+   SEAMS_FLAG_FAST is set (see above). */
 int seams_diff(const seams_diff_input *in, seams_diff_scratch *scratch, seams_script *out);
 
 /* Writes b into out using a, b's line table and the script. Validates the script. */
 int seams_apply(seams_apply_input *in);
+
+/* A self-contained patch carries the inserted bytes, so a can be turned into b without b.
+   Layout (little endian): u32 magic "SEAM", u32 version 1, u64 a_len, u64 hash of a,
+   u64 b_len, u64 record count, then per record u32 a_start, a_count, b_count, inserted
+   bytes, then all inserted bytes in order.
+   seams_write_patch reads a, b, both line tables and the script, and writes the patch to out.
+   seams_apply_patch reads a, a's line table (scanned) and patch, and writes b to out. A patch
+   made from another a is refused with SEAMS_EWRONGBASE, a damaged one with SEAMS_EBADSCRIPT. */
+typedef struct seams_patch_input {
+    const uint8_t *a_bytes;
+    uint64_t a_len;
+    const seams_line_table *a_lines;
+    const uint8_t *b_bytes;
+    uint64_t b_len;
+    const seams_line_table *b_lines;
+    const seams_script *script;
+    const uint8_t *patch;
+    uint64_t patch_len;
+    uint8_t *out;
+    uint64_t out_capacity;
+    uint64_t out_len;
+} seams_patch_input;
+
+enum { SEAMS_EWRONGBASE = -5, SEAMS_PATCH_HEADER_BYTES = 40, SEAMS_PATCH_RECORD_BYTES = 16 };
+
+uint64_t seams_patch_size(const seams_patch_input *in);
+int seams_write_patch(seams_patch_input *in);
+int seams_apply_patch(seams_patch_input *in);
+
+/* Three-way merge of two edits of one base. to_ours and to_theirs are scripts from base to
+   ours and from base to theirs. Changes that overlap or touch in base form one chunk: a chunk
+   changed on one side takes that side, a chunk changed the same way on both takes it once, any
+   other chunk is written as a conflict between <<<<<<< ours, ||||||| base, ======= and
+   >>>>>>> theirs lines and counted in conflicts. */
+typedef struct seams_merge_input {
+    const uint8_t *base_bytes;
+    uint64_t base_len;
+    const seams_line_table *base_lines;
+    const uint8_t *ours_bytes;
+    uint64_t ours_len;
+    const seams_line_table *ours_lines;
+    const uint8_t *theirs_bytes;
+    uint64_t theirs_len;
+    const seams_line_table *theirs_lines;
+    const seams_script *to_ours;
+    const seams_script *to_theirs;
+    uint8_t *out;
+    uint64_t out_capacity;
+    uint64_t out_len;
+    uint64_t conflicts;
+} seams_merge_input;
+
+int seams_merge(seams_merge_input *in);
 
 #endif

@@ -19,6 +19,8 @@ const fields = [
   's_a_start', 's_b_start', 's_a_count', 's_b_count', 's_count', 's_capacity',
   // apply output
   'out_ptr', 'out_capacity', 'out_len',
+  // with FLAG_FAST: rounds a middle-snake search may take before it splits at its furthest point
+  'cost_limit',
 ];
 
 export const FIELD = Object.fromEntries(fields.map((name, i) => [name, i * 4]));
@@ -30,6 +32,8 @@ export const TABLE = { t_start: 0, t_lens: 4, t_hash: 8, t_id: 12, t_count: 16, 
 export const CONST = {
   OK: 0, EINVAL: -1, E2BIG: -2, ENOSPC: -3, EBADSCRIPT: -4,
   FLAG_SIMD: 1,
+  FLAG_FAST: 2,
+  MIN_COST_LIMIT: 4096,
   FIRST_ACTIVE_SLOTS: 16,
   KV_UNREACHED_LOW: -1,
   KV_UNREACHED_HIGH: 0x7fffffff,

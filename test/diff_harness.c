@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Internal snake routines; hidden in shared builds but linkable here. */
@@ -272,6 +273,57 @@ static void check_fuzz(uint64_t pairs) {
     }
 }
 
+static double seconds(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + (double)t.tv_nsec * 1e-9;
+}
+
+/* FAST gives up on a search after its budget. Its script must still rebuild b exactly, agree
+   between scalar and avx2, and never be shorter than the exact one. Both files draw from the
+   same 64 lines in random order: nothing is discarded, and the exact search needs far more
+   rounds than the budget allows. */
+static void check_cost_cutoff(void) {
+    enum { LINES = 40000 };
+    uint8_t *a = malloc(LINES * 16), *b = malloc(LINES * 16);
+    uint64_t a_len = 0, b_len = 0;
+    for (unsigned i = 0; i < LINES; ++i) {
+        a_len += (uint64_t)sprintf((char *)a + a_len, "line %u\n", (unsigned)(next_random() % 64));
+        b_len += (uint64_t)sprintf((char *)b + b_len, "line %u\n", (unsigned)(next_random() % 64));
+    }
+    diff_run exact, fast;
+    const double t0 = seconds();
+    if (run_diff(&exact, a, a_len, b, b_len, 0) != SEAMS_OK) fail("exact diff status (cutoff case)", a, a_len, b, b_len);
+    const double t1 = seconds();
+    if (run_diff(&fast, a, a_len, b, b_len, SEAMS_FLAG_FAST) != SEAMS_OK) fail("fast diff status", a, a_len, b, b_len);
+    const double t2 = seconds();
+    check_script_shape(&fast, a, a_len, b, b_len);
+    if (edit_size(&fast.script) < edit_size(&exact.script)) fail("fast script shorter than minimal", a, a_len, b, b_len);
+    uint8_t *out = malloc(b_len + 1);
+    uint64_t out_len = 0;
+    if (apply_run(&fast, a, a_len, b, b_len, &fast.script, out, b_len, &out_len) != SEAMS_OK ||
+        out_len != b_len || memcmp(out, b, b_len) != 0)
+        fail("fast round trip", a, a_len, b, b_len);
+    if (__builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi")) {
+        diff_run fast_avx2;
+        if (run_diff(&fast_avx2, a, a_len, b, b_len, SEAMS_FLAG_FAST | SEAMS_FLAG_AVX2) != SEAMS_OK ||
+            fast_avx2.script.count != fast.script.count ||
+            memcmp(fast_avx2.script.a_start, fast.script.a_start, fast.script.count * 4) ||
+            memcmp(fast_avx2.script.a_count, fast.script.a_count, fast.script.count * 4) ||
+            memcmp(fast_avx2.script.b_count, fast.script.b_count, fast.script.count * 4))
+            fail("fast avx2 script differs", a, a_len, b, b_len);
+        free_run(&fast_avx2);
+    }
+    printf("cost cutoff: %u lines each side, exact %" PRIu64 " edits in %.0f ms, fast %" PRIu64 " edits (+%.2f%%) in %.0f ms\n",
+           LINES, edit_size(&exact.script), (t1 - t0) * 1e3, edit_size(&fast.script),
+           100.0 * ((double)edit_size(&fast.script) / (double)edit_size(&exact.script) - 1.0), (t2 - t1) * 1e3);
+    free(out);
+    free_run(&exact);
+    free_run(&fast);
+    free(a);
+    free(b);
+}
+
 static void check_bad_scripts(void) {
     const char *a = "a\nb\nc\n", *b = "a\nX\nc\n";
     diff_run run;
@@ -331,6 +383,7 @@ int main(int argc, char **argv) {
     check_snakes();
     check_edge_cases();
     check_bad_scripts();
+    check_cost_cutoff();
     const uint64_t edge = fuzz_case;
     check_fuzz(pairs);
     printf("PASS [%s]: snake routines, %" PRIu64 " edge pairs, %" PRIu64 " fuzz pairs (seed 0x%" PRIx64 "): round trip, minimal vs ref, script shape, scalar==avx2\n",

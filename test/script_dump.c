@@ -29,6 +29,9 @@ static uint8_t *read_bytes(FILE *f, uint32_t n) {
 
 typedef struct { int status; uint64_t count; uint32_t *records; } result;
 
+/* SEAMS_FAST=1 runs every pair with the cost cutoff, to check native and wasm cut the same way */
+static uint64_t fast_flag;
+
 static result run(const uint8_t *a, uint64_t a_len, const uint8_t *b, uint64_t b_len, int avx2) {
     const uint64_t na = seams_count_lines(a, a_len), nb = seams_count_lines(b, b_len), ids = na + nb;
     seams_line_table ta = {aligned(na, 4), aligned(na, 4), aligned(na, 8), aligned(na, 4), 0, na};
@@ -41,7 +44,7 @@ static result run(const uint8_t *a, uint64_t a_len, const uint8_t *b, uint64_t b
                                   aligned(na, 1), aligned(nb, 1), aligned(ids + 3, 8), aligned(ids + 3, 8), ids + 3};
     const uint64_t cap = (na < nb ? na : nb) + 1;
     seams_script s = {aligned(cap, 4), aligned(cap, 4), aligned(cap, 4), aligned(cap, 4), 0, cap};
-    seams_diff_input in = {a, a_len, b, b_len, &ta, &tb, avx2 ? SEAMS_FLAG_AVX2 : 0};
+    seams_diff_input in = {a, a_len, b, b_len, &ta, &tb, (avx2 ? SEAMS_FLAG_AVX2 : 0) | fast_flag};
     result r = {seams_diff(&in, &scratch, &s), 0, 0};
     if (r.status == SEAMS_OK) {
         r.count = s.count;
@@ -62,6 +65,7 @@ static result run(const uint8_t *a, uint64_t a_len, const uint8_t *b, uint64_t b
 }
 
 int main(int argc, char **argv) {
+    if (getenv("SEAMS_FAST")) fast_flag = SEAMS_FLAG_FAST;
     if (argc != 3) { fputs("usage: script_dump pairs.bin out.bin\n", stderr); return 2; }
     FILE *in = fopen(argv[1], "rb"), *out = fopen(argv[2], "wb");
     if (!in || !out) { perror("open"); return 2; }

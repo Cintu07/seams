@@ -513,6 +513,7 @@
     (local $ids_a i32) (local $ids_b i32) (local $kv_f i32) (local $kv_b i32)
     (local $dmin i32) (local $dmax i32) (local $fmin i32) (local $fmax i32) (local $bmin i32) (local $bmax i32)
     (local $odd i32) (local $diagonal i32) (local $x i32) (local $y i32) (local $limit i32)
+    (local $cost i32) (local $best i32) (local $best_x i32) (local $best_y i32)
     (local.set $ids_a (i32.load offset=#work_a (local.get $d)))
     (local.set $ids_b (i32.load offset=#work_b (local.get $d)))
     (local.set $kv_f (i32.load offset=#kv_f_centre (local.get $d)))
@@ -612,6 +613,31 @@
                     (then (return (local.get $x) (local.get $y))))))))
           (local.set $diagonal (i32.sub (local.get $diagonal) (i32.const 2)))
           (br $next_backward_diagonal)))
+      ;; out of budget: split at the furthest point the forward search reached, the same
+      ;; diagonals in the same order as seams_cut_short in src/myers.asm
+      (local.set $cost (i32.add (local.get $cost) (i32.const 1)))
+      (if (i32.and (i32.ne (i32.load offset=#cost_limit (local.get $d)) (i32.const 0))
+                   (i32.ge_u (local.get $cost) (i32.load offset=#cost_limit (local.get $d))))
+        (then
+          (local.set $best (i32.add (local.get $off1) (local.get $off2)))
+          (local.set $diagonal (local.get $fmax))
+          (block $all_seen
+            (loop $next_seen
+              (br_if $all_seen (i32.lt_s (local.get $diagonal) (local.get $fmin)))
+              (local.set $x (call $kv (local.get $kv_f) (local.get $diagonal)))
+              (local.set $y (i32.sub (local.get $x) (local.get $diagonal)))
+              (if (i32.and (i32.and (i32.le_s (local.get $x) (local.get $lim1)) (i32.le_s (local.get $y) (local.get $lim2)))
+                           (i32.and (i32.ge_s (local.get $y) (local.get $off2)) (i32.gt_s (i32.add (local.get $x) (local.get $y)) (local.get $best))))
+                (then
+                  (local.set $best (i32.add (local.get $x) (local.get $y)))
+                  (local.set $best_x (local.get $x))
+                  (local.set $best_y (local.get $y))))
+              (local.set $diagonal (i32.sub (local.get $diagonal) (i32.const 2)))
+              (br $next_seen)))
+          ;; a split at either corner would not shrink the box
+          (if (i32.and (i32.gt_s (local.get $best) (i32.add (local.get $off1) (local.get $off2)))
+                       (i32.lt_s (local.get $best) (i32.add (local.get $lim1) (local.get $lim2))))
+            (then (return (local.get $best_x) (local.get $best_y))))))
       (br $next_cost))
     (unreachable))
 
@@ -766,6 +792,14 @@
       (i32.load offset=#count_a (local.get $d)) (i32.load offset=#work_b (local.get $d)) (i32.load offset=#map_b (local.get $d))
       (i32.load offset=#match_changed_b (local.get $d))
       (i32.sub (i32.sub (local.get $b_lines) (local.get $prefix)) (local.get $suffix))))
+    ;; FAST: a search budget that grows with the square root of what is left to match
+    (i32.store offset=#cost_limit (local.get $d) (i32.const 0))
+    (if (i32.and (i32.load offset=#flags (local.get $d)) (i32.const @FLAG_FAST))
+      (then
+        (local.set $status (i32.shl (i32.const 1)
+          (i32.shr_u (i32.sub (i32.const 32) (i32.clz (i32.or (i32.add (local.get $kept_a) (local.get $kept_b)) (i32.const 1)))) (i32.const 1))))
+        (if (i32.lt_u (local.get $status) (i32.const @MIN_COST_LIMIT)) (then (local.set $status (i32.const @MIN_COST_LIMIT))))
+        (i32.store offset=#cost_limit (local.get $d) (local.get $status))))
     ;; centre both kv arrays so diagonals -(kept_b + 1) .. kept_a + 1 are valid indexes
     (i32.store offset=#kv_f_centre (local.get $d) (i32.add (i32.load offset=#kv_f (local.get $d))
       (i32.shl (i32.add (local.get $kept_b) (i32.const 1)) (i32.const 2))))

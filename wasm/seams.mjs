@@ -47,7 +47,7 @@ export class Seams {
   }
 
   // Minimal line diff of a and b (Uint8Array). Returns the change records as Uint32Arrays.
-  diff(a, b, { simd = true } = {}) {
+  diff(a, b, { simd = true, fast = false } = {}) {
     // copy the inputs first so the core can count their lines
     let where = this.#plan({ a: a.length, b: b.length });
     new Uint8Array(this.memory.buffer).set(a, where.a);
@@ -70,7 +70,7 @@ export class Seams {
     const view = new DataView(this.memory.buffer);
     const set = (name, value) => view.setUint32(FIELD[name], value, true);
     set('a_ptr', where.a); set('a_len', a.length); set('b_ptr', where.b); set('b_len', b.length);
-    set('flags', simd ? CONST.FLAG_SIMD : 0);
+    set('flags', (simd ? CONST.FLAG_SIMD : 0) | (fast ? CONST.FLAG_FAST : 0));
     this.#setTable(view, 'a', where, na);
     this.#setTable(view, 'b', where, nb);
     for (const name of ['slots', 'id_hash', 'id_ptr', 'id_len', 'count_a', 'count_b', 'work_a', 'work_b', 'map_a', 'map_b',
