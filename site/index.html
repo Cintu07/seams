@@ -71,8 +71,28 @@
     <h2>numbers</h2>
     <p>one laptop, one browser, the same files and the same scroll gestures, against <a href="https://diffs.com">@pierre/diffs</a> 1.6.4 at its best settings with highlighting on.</p>
   </div>
-  <figure class="chart">
-    <img src="assets/chart.webp" width="1600" height="900" alt="bar charts comparing seams and pierre's diffs on a one million line diff: first screen 0.19 s against 5.98 s, fully highlighted 0.49 s against 41.4 s, memory 113 MiB against 570 MiB, scrolling 145 fps against 48 fps" loading="lazy">
+  <figure class="chart" aria-label="seams against pierre's diffs on a one million line diff">
+    <div class="cmp">
+      <div class="cmp-head"><h3>first screen</h3><span>31x faster</span></div>
+      <div class="cmp-row"><i>seams</i><div class="track"><b class="s" style="width:3.177257525083612%"></b></div><em>0.19 s</em></div>
+      <div class="cmp-row"><i>pierre</i><div class="track"><b class="o" style="width:100%"></b></div><em>5.98 s</em></div>
+    </div>
+    <div class="cmp">
+      <div class="cmp-head"><h3>fully highlighted</h3><span>84x faster</span></div>
+      <div class="cmp-row"><i>seams</i><div class="track"><b class="s" style="width:1.2%"></b></div><em>0.49 s</em></div>
+      <div class="cmp-row"><i>pierre</i><div class="track"><b class="o" style="width:100%"></b></div><em>41.4 s</em></div>
+    </div>
+    <div class="cmp">
+      <div class="cmp-head"><h3>memory</h3><span>5x less</span></div>
+      <div class="cmp-row"><i>seams</i><div class="track"><b class="s" style="width:19.824561403508774%"></b></div><em>113 MiB</em></div>
+      <div class="cmp-row"><i>pierre</i><div class="track"><b class="o" style="width:100%"></b></div><em>570 MiB</em></div>
+    </div>
+    <div class="cmp">
+      <div class="cmp-head"><h3>scrolling</h3><span>3x smoother</span></div>
+      <div class="cmp-row"><i>seams</i><div class="track"><b class="s" style="width:100%"></b></div><em>145 fps</em></div>
+      <div class="cmp-row"><i>pierre</i><div class="track"><b class="o" style="width:33.10344827586207%"></b></div><em>48 fps</em></div>
+    </div>
+    <figcaption>a 1,000,000-line diff, opened and scrolled. same laptop (rtx 5060, 145 hz), same edge, same files, same scroll gestures.</figcaption>
   </figure>
   <div class="tiles">
     <div class="tile"><b>34 ms</b><span>first screen of a 1M-line diff packed ahead of time, on a laptop at 16% battery</span></div>
@@ -92,7 +112,7 @@
     <article class="card" data-icon="bot"><h3>reviewing what an agent wrote</h3><p>coding agents change thousands of lines at once. you still have to read them, and the review tool should not be the slow part.</p></article>
     <article class="card" data-icon="table"><h3>data, not code</h3><p>sql dumps, json exports, csv, logs, terraform state. text files with a million lines are normal outside of source trees.</p></article>
     <article class="card" data-icon="gear"><h3>diff once, in ci</h3><p>seams-pack diffs on the server and writes a pack; the browser opens it with nothing left to compute. a pr page that is instant on any laptop.</p></article>
-    <article class="card" data-icon="plug"><h3>inside your own tool</h3><p>a small npm package with a plain api and a react component: code review apps, editors, internal dashboards, docs.</p></article>
+    <article class="card" data-icon="plug"><h3>inside your own tool</h3><p>one import by url, a plain api and a react component. code review apps, editors, internal dashboards, docs.</p></article>
     <article class="card" data-icon="merge"><h3>patches and merges</h3><p>the cli writes patches that carry their own bytes and refuse the wrong base, and does three-way merges with conflict markers.</p></article>
   </div>
 </section>
@@ -104,9 +124,9 @@
   </div>
   <ol class="pipe">
     <li><b>scan</b><span>find every newline, 32 bytes at a time with avx2, 16 with simd128</span></li>
-    <li><b>hash</b><span>one 64-bit hash per line, 8 bytes at a time</span></li>
-    <li><b>intern</b><span>each distinct line becomes a number; the diff runs on numbers only</span></li>
     <li><b>trim</b><span>skip the common start and end, which is most of a real edit</span></li>
+    <li><b>hash</b><span>one 64-bit hash per line, 8 bytes at a time</span></li>
+    <li><b>intern</b><span>each distinct line becomes a number, so the diff runs on numbers only</span></li>
     <li><b>myers</b><span>linear-space myers on what is left, with a budget so the worst case stays bounded</span></li>
     <li><b>draw</b><span>every glyph is one instanced quad from a glyph atlas; one webgl draw call a frame, only the rows on screen</span></li>
   </ol>
@@ -132,7 +152,7 @@ await viewer.setFiles(before, after, { name: 'main.ts' });</code></pre>
       <h3>on the command line</h3>
 <pre><code># linux x86-64, one static binary from the releases
 tar xf seams-linux-x86_64.tar.gz
-seams old new                 # unified diff
+seams old new        # unified diff
 seams patch old new > p.seams
 seams apply old p.seams > new
 seams merge base ours theirs</code></pre>
