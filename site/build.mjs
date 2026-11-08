@@ -22,6 +22,8 @@ for (const f of ['seams.mjs', 'layout.mjs']) cpSync(join(root, 'wasm', f), join(
 mkdirSync(join(out, 'build'));
 if (!existsSync(join(root, 'build/seams.wasm'))) throw new Error('build/seams.wasm is missing: run node wasm/build.mjs first');
 cpSync(join(root, 'build/seams.wasm'), join(out, 'build/seams.wasm'));
+// the library itself, so a page can import it by url with no package manager
+if (existsSync(join(root, 'pkg/dist'))) cpSync(join(root, 'pkg/dist'), join(out, 'lib'), { recursive: true });
 
 // the demo: web/embed.mjs before and after the commit that added packs, straight from git history
 mkdirSync(join(out, 'demo'));

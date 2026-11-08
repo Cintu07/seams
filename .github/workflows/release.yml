@@ -1,0 +1,34 @@
+name: release
+
+# push a tag like v0.1.0 and this builds the linux binary and the web library and attaches both
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update && sudo apt-get install -y nasm
+      - run: make test
+      - run: make build/seams CC="gcc -static"
+      - run: npm ci --prefix wasm && node wasm/build.mjs && node pkg/build.mjs
+      - name: pack
+        run: |
+          mkdir -p out/seams out/seams-web
+          cp build/seams README.md out/seams/
+          cp tools/seams-git out/seams/ 2>/dev/null || true
+          cp -r pkg/dist/. out/seams-web/
+          [ -f LICENSE ] && cp LICENSE out/seams/ && cp LICENSE out/seams-web/
+          tar -C out -czf seams-linux-x86_64.tar.gz seams
+          tar -C out -czf seams-web.tar.gz seams-web
+      - run: gh release create "$GITHUB_REF_NAME" seams-linux-x86_64.tar.gz seams-web.tar.gz --title "$GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

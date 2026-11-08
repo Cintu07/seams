@@ -12,7 +12,12 @@ let worker = null, nextId = 0;
 const waiting = new Map();   // id -> { resolve, onStates }
 function getWorker() {
   if (worker) return worker;
-  worker = new Worker(new URL('./diff_worker.mjs', import.meta.url), { type: 'module' });
+  const url = new URL('./diff_worker.mjs', import.meta.url);
+  // a page that imports seams from another site (by url) can't start a worker from there directly,
+  // so it starts a one-line worker of its own that imports the real one
+  worker = url.origin === location.origin
+    ? new Worker(url, { type: 'module' })
+    : new Worker(URL.createObjectURL(new Blob([`import ${JSON.stringify(url.href)};`], { type: 'text/javascript' })), { type: 'module' });
   worker.addEventListener('message', ({ data }) => {
     const w = waiting.get(data.id);
     if (!w) return;

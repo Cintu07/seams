@@ -26,6 +26,7 @@ jobs:
           node-version: 22
       - run: npm ci --prefix wasm
       - run: node wasm/build.mjs
+      - run: node pkg/build.mjs     # the library, served from the site at /seams/lib/
       - run: node site/build.mjs
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -121,20 +121,22 @@
   <div class="ways">
     <div class="way">
       <h3>in a web page</h3>
-<pre><code>import { createDiffViewer } from 'seams-diff';
+<pre><code>import { createDiffViewer } from
+  'https://cintu07.github.io/seams/lib/index.mjs';
 
 const viewer = createDiffViewer(el, { theme: 'sage' });
 await viewer.setFiles(before, after, { name: 'main.ts' });</code></pre>
-      <p>react: <code>&lt;SeamsDiff oldFile={a} newFile={b} /&gt;</code> from <code>seams-diff/react</code>. the npm release is coming; until then <code>node pkg/build.mjs</code> builds it from the repo.</p>
+      <p>no install, no package manager. it's about 100 kb of plain modules and a 5 kb wasm file. want it on your own server? grab <code>seams-web.tar.gz</code> from the releases and serve the folder.</p>
     </div>
     <div class="way">
       <h3>on the command line</h3>
-<pre><code>make                          # linux, x86-64, nasm + gcc
+<pre><code># linux x86-64, one static binary from the releases
+tar xf seams-linux-x86_64.tar.gz
 seams old new                 # unified diff
 seams patch old new > p.seams
 seams apply old p.seams > new
 seams merge base ours theirs</code></pre>
-      <p>as a git diff driver: <code>GIT_EXTERNAL_DIFF=tools/seams-git git diff</code>.</p>
+      <p>or build it yourself with <code>make</code> (nasm and gcc). as a git diff driver, <code>GIT_EXTERNAL_DIFF=tools/seams-git git diff</code>.</p>
     </div>
     <div class="way">
       <h3>ahead of time</h3>
