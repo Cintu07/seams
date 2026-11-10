@@ -13,6 +13,9 @@ runs are the gaps between them.
 
 - In a web page, no install: `import { createDiffViewer } from 'https://cintu07.github.io/seams/lib/index.mjs'`.
 - Linux x86-64: `seams-linux-x86_64.tar.gz` from [Releases](https://github.com/Cintu07/seams/releases), one static binary.
+- Windows x86-64: `seams-windows-x86_64.zip` from the same release. The same assembly, built with
+  `tools/build-windows.sh` (NASM `-f win64`, linked with `zig cc`); CI checks it gives Linux's answers
+  byte for byte. Windows' Smart App Control may block it until the binary is signed.
 - Self-hosted web library: `seams-web.tar.gz` from the same release; serve the folder and import `index.mjs`.
 - From source: `make` (NASM and GCC).
 
@@ -59,6 +62,24 @@ node web/serve.mjs          # http://localhost:4174/ ; pick or drop two files
 `?old=NAME&new=NAME` loads files from the fixtures directory (`SEAMS_FIXTURES`). Keys: arrows, Page
 Up/Down, Home/End, `n`/`p` for the next/previous change. A 1M-line diff scrolls within the display
 frame budget (p99 under 8 ms at 145 Hz) with 0.2 ms of CPU per frame; `web/bench_viewer.mjs` measures it.
+
+## A whole pull request
+
+`web/review.mjs` puts a file list beside the viewer. Every file is diffed in the background as soon
+as the review opens (a few workers, the same WebAssembly core), so the list fills in with +/- counts
+while the first file is on screen. Only the rows in view exist in the DOM. A generated 5,000-file,
+3.8M-line pull request shows its first file 60 ms after opening and has every file diffed in about
+a second. `]` and `[` move between files; the box filters paths.
+
+```sh
+node tools/seams-review.mjs path/to/repo main my-branch -o review.json   # every changed text file
+```
+
+```js
+import { createReview } from 'https://cintu07.github.io/seams/lib/review.mjs';
+const review = createReview(el);
+await review.setFiles((await (await fetch('review.json')).json()).files);   // [{ path, old, new }]
+```
 
 ## Packs: diff ahead of time
 

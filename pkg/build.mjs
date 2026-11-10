@@ -14,6 +14,7 @@ const files = {
   'web/embed.mjs': 'index.mjs', 'web/renderer.mjs': 'renderer.mjs', 'web/interact.mjs': 'interact.mjs',
   'web/lex.mjs': 'lex.mjs', 'web/words.mjs': 'words.mjs', 'web/look.mjs': 'look.mjs', 'web/diff_worker.mjs': 'diff_worker.mjs',
   'web/pack.mjs': 'pack.mjs', 'web/layout.mjs': 'rows.mjs',
+  'web/review.mjs': 'review.mjs', 'web/count_worker.mjs': 'count_worker.mjs',
   'wasm/seams.mjs': 'seams.mjs', 'wasm/layout.mjs': 'layout.mjs',
 };
 for (const [from, to] of Object.entries(files)) {
@@ -21,6 +22,8 @@ for (const [from, to] of Object.entries(files)) {
   s = s.replace("'../wasm/seams.mjs'", "'./seams.mjs'").replace("'../build/seams.wasm'", "'./seams.wasm'");
   // web/layout.mjs (row layout) ships as rows.mjs, beside wasm's own layout.mjs (descriptor offsets)
   if (from.startsWith('web/')) s = s.replace("from './layout.mjs'", "from './rows.mjs'");
+  // web/embed.mjs ships as index.mjs
+  s = s.replace("from './embed.mjs'", "from './index.mjs'");
   if (s.includes('../')) throw new Error(`${from} still reaches outside the package`);
   writeFileSync(join(dist, to), s);
 }

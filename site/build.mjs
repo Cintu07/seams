@@ -15,7 +15,7 @@ for (const f of ['index.html', 'site.css', 'main.mjs']) cpSync(join(root, 'site'
 cpSync(join(root, 'site/fonts'), join(out, 'fonts'), { recursive: true });
 cpSync(join(root, 'site/assets'), join(out, 'assets'), { recursive: true });
 mkdirSync(join(out, 'web'));
-for (const f of ['embed.mjs', 'renderer.mjs', 'interact.mjs', 'lex.mjs', 'words.mjs', 'look.mjs', 'diff_worker.mjs', 'layout.mjs', 'pack.mjs'])
+for (const f of ['embed.mjs', 'renderer.mjs', 'interact.mjs', 'lex.mjs', 'words.mjs', 'look.mjs', 'diff_worker.mjs', 'layout.mjs', 'pack.mjs', 'review.mjs', 'count_worker.mjs'])
   cpSync(join(root, 'web', f), join(out, 'web', f));
 mkdirSync(join(out, 'wasm'));
 for (const f of ['seams.mjs', 'layout.mjs']) cpSync(join(root, 'wasm', f), join(out, 'wasm', f));

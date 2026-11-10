@@ -1,5 +1,6 @@
 // The site's one script: the real viewer, the pixel city, the theme, the three demos.
 import { createDiffViewer } from './web/embed.mjs';
+import { createReview } from './web/review.mjs';
 import { THEMES, face, drawSkyline } from './web/look.mjs';
 
 const $ = (id) => document.getElementById(id);
@@ -139,4 +140,43 @@ $('viewer').addEventListener('keydown', (e) => {
   if (e.key !== 'v' || e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'INPUT') return;
   e.preventDefault();
   $('viewToggle').click();
+});
+
+// ------------------------------------------------------------- a 5,000-file pull request
+// plausible files from the same line shapes as the million-line demo: most modified a few times,
+// some added, some deleted, sizes from tiny to a few thousand lines
+const DIRS = ['src/core', 'src/ui', 'src/net', 'src/db', 'src/auth', 'lib/util', 'lib/parse', 'test/unit', 'test/e2e', 'tools', 'docs/api', 'src/workers'];
+function pullRequest(count) {
+  let seed = 99;
+  const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
+  const files = [];
+  for (let k = 0; k < count; ++k) {
+    const lines = Math.round(20 + rnd() ** 3 * 3000), from = Math.floor(rnd() * 900000), edited = new Set();
+    const edits = 1 + Math.floor(rnd() * 8);
+    // an edit only shows on lines whose shape changes when edited (see lineOf), counted from the shared pattern
+    while (edited.size < Math.min(edits, Math.floor(lines / 9))) { const i = 9 + Math.floor(rnd() * (lines - 18)); edited.add(i - ((from + i) % 9) + [1, 3, 6][Math.floor(rnd() * 3)]); }
+    const text = (ed) => { let s = ''; for (let i = 0; i < lines; ++i) s += lineOf(from + i, ed && edited.has(i)) + '\n'; return s; };
+    const kind = rnd(), path = `${DIRS[k % DIRS.length]}/${WORDS[k % WORDS.length]}_${WORDS[(k * 5) % WORDS.length]}_${k}.ts`;
+    files.push({ path, old: kind < 0.02 ? null : text(false), new: kind > 0.99 ? null : text(true) });
+  }
+  return files.sort((x, y) => (x.path < y.path ? -1 : 1));
+}
+let review = null;
+$('openPr').addEventListener('click', async () => {
+  const t0 = performance.now();
+  const files = pullRequest(5000);
+  const made = performance.now() - t0;
+  let lines = 0;
+  for (const f of files) lines += (f.new ?? f.old).split('\n').length - 1;
+  review?.destroy();
+  review = createReview($('review'), {
+    theme: theme === THEMES.dusk ? 'dusk' : 'sage',
+    onChange: (e) => {
+      if (e.counted) $('prStats').textContent = `${files.length.toLocaleString()} files, ${lines.toLocaleString()} lines · every file diffed in the background in ${(e.ms / 1000).toFixed(1)} s · generated in ${made.toFixed(0)} ms`;
+    },
+  });
+  const t1 = performance.now();
+  await review.setFiles(files);
+  $('prStats').textContent = `${files.length.toLocaleString()} files, ${lines.toLocaleString()} lines · first file on screen ${(performance.now() - t1).toFixed(0)} ms after open · diffing the rest…`;
+  $('openPr').textContent = 'regenerate';
 });
