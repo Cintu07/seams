@@ -49,3 +49,18 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" seams-windows-x86_64.zip
         env:
           GH_TOKEN: ${{ github.token }}
+
+  macos:
+    needs: release
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install nasm
+      - run: bash tools/build-macos.sh
+      - name: attach the mac binary
+        run: |
+          mkdir -p out/seams && cp build/mac/seams README.md LICENSE out/seams/
+          tar -C out -czf seams-macos-x86_64.tar.gz seams
+          gh release upload "$GITHUB_REF_NAME" seams-macos-x86_64.tar.gz
+        env:
+          GH_TOKEN: ${{ github.token }}

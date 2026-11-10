@@ -16,6 +16,8 @@ runs are the gaps between them.
 - Windows x86-64: `seams-windows-x86_64.zip` from the same release. The same assembly, built with
   `tools/build-windows.sh` (NASM `-f win64`, linked with `zig cc`); CI checks it gives Linux's answers
   byte for byte. Windows' Smart App Control may block it until the binary is signed.
+- macOS (Intel): `seams-macos-x86_64.tar.gz`, built with `tools/build-macos.sh` (NASM `-f macho64`).
+  Apple Silicon macs run it through Rosetta 2; a native ARM64 engine is not written.
 - Self-hosted web library: `seams-web.tar.gz` from the same release; serve the folder and import `index.mjs`.
 - From source: `make` (NASM and GCC).
 
