@@ -283,14 +283,14 @@ static double seconds(void) {
    between scalar and avx2, and never be shorter than the exact one. Both files draw from the
    same 64 lines in random order: nothing is discarded, and the exact search needs far more
    rounds than the budget allows. */
-static void check_cost_cutoff(void) {
-    enum { LINES = 40000 };
-    uint8_t *a = malloc(LINES * 16), *b = malloc(LINES * 16);
+/* the bounded search on files that share their lines in a different order. the sides differ in
+   length too, so the search box is not square and a split checked against the wrong side's limit
+   lands outside it */
+static void check_cost_cutoff(unsigned lines_a, unsigned lines_b) {
+    uint8_t *a = malloc(lines_a * 16), *b = malloc(lines_b * 16);
     uint64_t a_len = 0, b_len = 0;
-    for (unsigned i = 0; i < LINES; ++i) {
-        a_len += (uint64_t)sprintf((char *)a + a_len, "line %u\n", (unsigned)(next_random() % 64));
-        b_len += (uint64_t)sprintf((char *)b + b_len, "line %u\n", (unsigned)(next_random() % 64));
-    }
+    for (unsigned i = 0; i < lines_a; ++i) a_len += (uint64_t)sprintf((char *)a + a_len, "line %u\n", (unsigned)(next_random() % 64));
+    for (unsigned i = 0; i < lines_b; ++i) b_len += (uint64_t)sprintf((char *)b + b_len, "line %u\n", (unsigned)(next_random() % 64));
     diff_run exact, fast;
     const double t0 = seconds();
     if (run_diff(&exact, a, a_len, b, b_len, 0) != SEAMS_OK) fail("exact diff status (cutoff case)", a, a_len, b, b_len);
@@ -314,8 +314,8 @@ static void check_cost_cutoff(void) {
             fail("fast avx2 script differs", a, a_len, b, b_len);
         free_run(&fast_avx2);
     }
-    printf("cost cutoff: %u lines each side, exact %" PRIu64 " edits in %.0f ms, fast %" PRIu64 " edits (+%.2f%%) in %.0f ms\n",
-           LINES, edit_size(&exact.script), (t1 - t0) * 1e3, edit_size(&fast.script),
+    printf("cost cutoff: %u and %u lines, exact %" PRIu64 " edits in %.0f ms, fast %" PRIu64 " edits (+%.2f%%) in %.0f ms\n",
+           lines_a, lines_b, edit_size(&exact.script), (t1 - t0) * 1e3, edit_size(&fast.script),
            100.0 * ((double)edit_size(&fast.script) / (double)edit_size(&exact.script) - 1.0), (t2 - t1) * 1e3);
     free(out);
     free_run(&exact);
@@ -383,7 +383,9 @@ int main(int argc, char **argv) {
     check_snakes();
     check_edge_cases();
     check_bad_scripts();
-    check_cost_cutoff();
+    check_cost_cutoff(40000, 40000);
+    check_cost_cutoff(40000, 14000);
+    check_cost_cutoff(14000, 40000);
     const uint64_t edge = fuzz_case;
     check_fuzz(pairs);
     printf("PASS [%s]: snake routines, %" PRIu64 " edge pairs, %" PRIu64 " fuzz pairs (seed 0x%" PRIx64 "): round trip, minimal vs ref, script shape, scalar==avx2\n",
