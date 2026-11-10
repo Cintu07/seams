@@ -43,8 +43,10 @@ uniform sampler2D atlas;
 uniform vec4 palette[32];
 out vec4 outColour;
 void main() {
+  vec4 t = texture(atlas, uv);
+  if (paletteIndex == 31) { outColour = vec4(t.rgb * t.a, t.a); return; }   // a colour glyph: its own pixels
   vec4 c = palette[paletteIndex];
-  float coverage = texture(atlas, uv).a * c.a;
+  float coverage = t.a * c.a;
   outColour = vec4(c.rgb * coverage, coverage);
 }`;
 
@@ -55,6 +57,7 @@ import { wordDiff } from "./words.mjs";
 export const PALETTE = THEMES.sage.renderer;
 const COLOUR = Object.fromEntries(Object.keys(PALETTE).map((name, i) => [name, i]));
 const TOKEN_COLOUR = CLASS_COLOUR.map((name) => (name ? COLOUR[name] : 0));
+const IMAGE = 31;   // the palette slot the shader reads as "use the glyph's own colours" (the palette has 24)
 
 function hexToRgba(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -146,7 +149,9 @@ export class DiffRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.cell = { w: cellW, h: cellH, columns, uvW: 1 / columns, uvH: 1 / rows };
     this.glyphFont = `${font}, ${FALLBACK_FONTS}`;
-    this.glyphs = new Map();
+    // colour emoji ask the emoji fonts first, before any flat symbol font can claim them
+    this.emojiFont = `${Math.round(fontPx * dpr)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", ${FALLBACK_FONTS}`;
+    this.glyphs = new Map(); this.flat = new Set();
     this.nextCell = FIRST_DYNAMIC_CELL;
     this.atlasFull = false;
     // one small canvas per glyph width, uploaded whole: no read back from the canvas, which stalls
@@ -154,7 +159,8 @@ export class DiffRenderer {
   }
 
   // the atlas cell of a character beyond ascii, drawn into the atlas the first time it is asked for
-  #glyph(cp, wide) {
+  // cp is a code point, or the text of a whole cluster (a base with its accents, a joined emoji)
+  #glyph(cp, wide, colourGlyph = false) {
     const known = this.glyphs.get(cp);
     if (known !== undefined) return known;
     const { w: cellW, h: cellH, columns } = this.cell;
@@ -163,15 +169,22 @@ export class DiffRenderer {
     if (at + (wide ? 2 : 1) > columns * ATLAS_ROWS) { this.atlasFull = true; return UNKNOWN - FIRST_GLYPH; }
     const g = this.glyphCanvas[wide ? 1 : 0], ctx = g.getContext('2d');
     ctx.clearRect(0, 0, g.width, g.height);
-    ctx.font = this.glyphFont;
+    ctx.font = colourGlyph ? this.emojiFont : this.glyphFont;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
     ctx.fillStyle = '#fff';
-    const span = (wide ? 2 : 1) * cellW, ch = String.fromCodePoint(cp);
+    const span = (wide ? 2 : 1) * cellW, ch = typeof cp === 'string' ? cp : String.fromCodePoint(cp);
     // a glyph from a fallback font may be wider than its cells: squeeze it in rather than clip it
     const measured = ctx.measureText(ch).width;
     if (measured > span) { ctx.save(); ctx.translate(span / 2, 0); ctx.scale(span / measured, 1); ctx.fillText(ch, 0, cellH / 2); ctx.restore(); }
     else ctx.fillText(ch, span / 2, cellH / 2);
+    // an emoji the system font can't colour (flags on windows come out as two letters) is drawn like text
+    if (colourGlyph) {
+      const px = ctx.getImageData(0, 0, Math.ceil(span), Math.ceil(cellH)).data;
+      let tinted = false;
+      for (let k = 0; k < px.length && !tinted; k += 4) tinted = px[k + 3] > 40 && (Math.abs(px[k] - px[k + 1]) > 24 || Math.abs(px[k + 1] - px[k + 2]) > 24);
+      if (!tinted) this.flat.add(cp);
+    }
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.atlasTexture);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, (at % columns) * cellW, Math.floor(at / columns) * cellH, gl.RGBA, gl.UNSIGNED_BYTE, g);
@@ -330,12 +343,12 @@ export class DiffRenderer {
         let column = 0, span = 0;
         for (let i = start; i < end;) {
           const byte = bytes[i];
-          let cp = byte, len = 1;
-          if (byte >= 0x80) [cp, len] = decode(bytes, i, end);
-          const w = byte === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : charWidth(cp);
+          // plain ascii is the fast path; anything else is read as a whole cluster (base + accents, joined emoji)
+          const ascii = byte < 0x80 && (i + 1 >= end || bytes[i + 1] < 0x80);
+          const [cp, len, cw, colourGlyph, text] = ascii ? [byte, 1, byte === 9 ? -1 : 1, false, null] : cluster(bytes, i, end);
+          const w = cw < 0 ? TAB_WIDTH - (column % TAB_WIDTH) : cw;
           const at = i - start;
           i += len;
-          if (w === 0) continue;                       // combining marks and joiners take no column
           const x = column - skip;
           column += w;
           if (x < 0) continue;
@@ -347,12 +360,14 @@ export class DiffRenderer {
           if (byte === 32 || byte === 9) continue;
           const cls = classes && at < classes.length ? classes[at] : 0;
           const colour = cls ? TOKEN_COLOUR[cls] : textColour;
-          if (byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(pane.text + x, y, 1, byte, colour);
-          else if (cp < 32 || cp === 0x7f || cp === 0xfffd) push(pane.text + x, y, 1, UNKNOWN, COLOUR.unknown);
+          if (len === 1 && byte >= FIRST_GLYPH && byte <= LAST_GLYPH) push(pane.text + x, y, 1, byte, colour);
+          else if (!text && (cp < 32 || cp === 0x7f || cp === 0xfffd)) push(pane.text + x, y, 1, UNKNOWN, COLOUR.unknown);
           else {
-            const cell = this.#glyph(cp, w === 2);
-            push(pane.text + x, y, 1, FIRST_GLYPH + cell, cell === UNKNOWN - FIRST_GLYPH ? COLOUR.unknown : colour);
-            if (w === 2 && pane.text + x + 1 < pane.end) push(pane.text + x + 1, y, 1, FIRST_GLYPH + cell + 1, colour);
+            const cell = this.#glyph(text ?? cp, w === 2, colourGlyph);
+            // colour emoji keep their own colours: the shader reads the atlas pixel instead of the palette
+            const tint = cell === UNKNOWN - FIRST_GLYPH ? COLOUR.unknown : colourGlyph && !this.flat.has(text ?? cp) ? IMAGE : colour;
+            push(pane.text + x, y, 1, FIRST_GLYPH + cell, tint);
+            if (w === 2 && pane.text + x + 1 < pane.end) push(pane.text + x + 1, y, 1, FIRST_GLYPH + cell + 1, tint);
           }
         }
       }
@@ -399,21 +414,52 @@ export function decode(bytes, i, end) {
 // columns a character takes: 0 for combining marks and joiners, 2 for East Asian wide and emoji, else 1
 export function charWidth(cp) {
   if (cp < 0x300) return 1;
-  if ((cp >= 0x300 && cp <= 0x36f) || (cp >= 0x200b && cp <= 0x200f) || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0x1ab0 && cp <= 0x1aff) || (cp >= 0x20d0 && cp <= 0x20ff) || (cp >= 0xe0100 && cp <= 0xe01ef)) return 0;
+  if ((cp >= 0x300 && cp <= 0x36f) || (cp >= 0x900 && cp <= 0x903) || (cp >= 0x93a && cp <= 0x94f && cp !== 0x93d) || (cp >= 0x951 && cp <= 0x957) || (cp >= 0x962 && cp <= 0x963) || (cp >= 0x200b && cp <= 0x200f) || (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0x1ab0 && cp <= 0x1aff) || (cp >= 0x20d0 && cp <= 0x20ff) || (cp >= 0xe0100 && cp <= 0xe01ef)) return 0;
   if ((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0x303e) || (cp >= 0x3041 && cp <= 0x33ff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0x4e00 && cp <= 0x9fff) ||
       (cp >= 0xa000 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
-      (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1f64f) || (cp >= 0x1f900 && cp <= 0x1f9ff) || (cp >= 0x1fa70 && cp <= 0x1faff) || (cp >= 0x20000 && cp <= 0x3fffd)) return 2;
+      (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1f6ff) || (cp >= 0x1f900 && cp <= 0x1f9ff) || (cp >= 0x1fa70 && cp <= 0x1faff) || (cp >= 0x20000 && cp <= 0x3fffd)) return 2;
   return 1;
 }
 
+// one character as it is drawn: a base code point plus everything that attaches to it (accents,
+// variation selectors, skin tones, tags, zero-width-joined emoji, the second half of a flag).
+// returns [base code point, byte length, columns (-1 for a tab), colour glyph?, text or null when it is the base alone]
+const RI = (cp) => cp >= 0x1f1e6 && cp <= 0x1f1ff;
+const utf8 = new TextDecoder();
+const PICTO = /\p{Extended_Pictographic}/u;
+const graphemes = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+const utf8Length = (s) => { let n = 0; for (const ch of s) { const c = ch.codePointAt(0); n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; } return n; };
+export function cluster(bytes, i, end) {
+  let cp = bytes[i], len = 1;
+  if (cp >= 0x80) [cp, len] = decode(bytes, i, end);
+  if (cp === 9) return [cp, 1, -1, false, null];
+  if (i + len >= end || bytes[i + len] < 0x80) return [cp, len, Math.max(1, charWidth(cp)), RI(cp) || (cp >= 0x1f000 && PICTO.test(String.fromCodePoint(cp))), null];
+  // the browser's grapheme rules know every script: accents, devanagari conjuncts, joined emoji, flags
+  let text;
+  if (graphemes) {
+    const chunk = utf8.decode(bytes.subarray(i, Math.min(end, i + 64)));
+    text = graphemes.segment(chunk)[Symbol.iterator]().next().value.segment;
+  } else text = String.fromCodePoint(cp);
+  const bytesLen = Math.max(len, utf8Length(text));
+  const colour = RI(cp) || (cp >= 0x80 && PICTO.test(String.fromCodePoint(cp)));
+  let width = 0;
+  if (colour && (cp >= 0x1f000 || text.includes('\ufe0f'))) width = 2;
+  else for (const ch of text) width += charWidth(ch.codePointAt(0));
+  return [cp, bytesLen, Math.max(1, width), colour, bytesLen > len ? text : null];
+}
+// the same walk, for columns only; plain ascii skips the cluster check
+function step(bytes, i, end) {
+  const b = bytes[i];
+  if (b < 0x80 && (i + 1 >= end || bytes[i + 1] < 0x80)) return [1, b === 9 ? -1 : 1];
+  const c = cluster(bytes, i, end);
+  return [c[1], c[2]];
+}
 // display column of a byte offset in a line (tabs to the next stop of 4, wide characters two columns)
 export function columnAt(bytes, start, end, offset) {
   let column = 0;
   for (let i = start; i < Math.min(offset, end);) {
-    const b = bytes[i];
-    let cp = b, len = 1;
-    if (b >= 0x80) [cp, len] = decode(bytes, i, end);
-    column += b === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : charWidth(cp);
+    const [len, w] = step(bytes, i, end);
+    column += w < 0 ? TAB_WIDTH - (column % TAB_WIDTH) : w;
     i += len;
   }
   return column;
@@ -422,11 +468,9 @@ export function columnAt(bytes, start, end, offset) {
 export function offsetAt(bytes, start, end, col) {
   let column = 0;
   for (let i = start; i < end;) {
-    const b = bytes[i];
-    let cp = b, len = 1;
-    if (b >= 0x80) [cp, len] = decode(bytes, i, end);
-    const w = b === 9 ? TAB_WIDTH - (column % TAB_WIDTH) : charWidth(cp);
-    if (w > 0 && column + w > col) return i;
+    const [len, cw] = step(bytes, i, end);
+    const w = cw < 0 ? TAB_WIDTH - (column % TAB_WIDTH) : cw;
+    if (column + w > col) return i;
     column += w;
     i += len;
   }
