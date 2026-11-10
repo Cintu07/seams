@@ -266,12 +266,6 @@ static void usage(void) {
 }
 
 int main(int argc, char **argv) {
-    if (argc == 4 && strcmp(argv[1], "patch") == 0) return command_patch(argv[2], argv[3]);
-    if (argc == 4 && strcmp(argv[1], "apply") == 0) return command_apply(argv[2], argv[3]);
-    if (argc == 5 && strcmp(argv[1], "merge") == 0) return command_merge(argv[2], argv[3], argv[4]);
-    uint64_t context = 3;
-    const char *label[2] = {0, 0}, *path[2] = {0, 0};
-    int labels = 0, paths = 0, stat = 0, timing = 0, minimal = 0;
 #ifdef _WIN32
     /* bytes in, bytes out: no \n to \r\n translation, or apply would not rebuild files exactly */
     _setmode(_fileno(stdout), _O_BINARY);
@@ -282,6 +276,12 @@ int main(int argc, char **argv) {
         if (GetConsoleMode(out, &mode)) SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
 #endif
+    if (argc == 4 && strcmp(argv[1], "patch") == 0) return command_patch(argv[2], argv[3]);
+    if (argc == 4 && strcmp(argv[1], "apply") == 0) return command_apply(argv[2], argv[3]);
+    if (argc == 5 && strcmp(argv[1], "merge") == 0) return command_merge(argv[2], argv[3], argv[4]);
+    uint64_t context = 3;
+    const char *label[2] = {0, 0}, *path[2] = {0, 0};
+    int labels = 0, paths = 0, stat = 0, timing = 0, minimal = 0;
     colour = isatty(STDOUT_FILENO);
     for (int i = 1; i < argc; ++i) {
         const char *x = argv[i];
