@@ -132,7 +132,18 @@ scripts are 188 edits shorter in total. Most real edits leave long identical str
 of a file; seams skips them before hashing. On generated files with sparse edits it is level with or
 faster than imara. On dense edits (10,000 changes spread through the file) it is 2.2 to 2.7 times
 slower with `--minimal`, because it returns the minimal script and imara's default gives that up for
-speed. The bounded default (`SEAMS_FLAG_FAST`) has not been benchmarked against imara yet.
+speed. The bounded default (`SEAMS_FLAG_FAST`) narrows that but does not close it (median ms, one
+vCPU, `bench/diff_bench.c` against imara's default Myers):
+
+| pair | seams exact | seams fast | imara myers | edits, seams / imara |
+|---|---|---|---|---|
+| 1M lines, 100 edits | 76 | 89 | 125 | 274 / 274 |
+| 1M lines, 10,000 edits | 285 | 188 | 133 | 26,255 / 26,257 |
+| 100k lines, 10,000 edits | 39 | 44 | 15 | 24,724 / 24,796 |
+| 50k lines, all different | 3.3 | 3.3 | 3.7 | 100,000 / 100,000 |
+
+On sparse edits fast mode costs a little (the budget bookkeeping) and changes nothing; dense edits
+are where imara's Myers is still ahead.
 
 ## License
 

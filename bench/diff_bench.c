@@ -75,10 +75,11 @@ int main(int argc, char **argv) {
     setup(&e, na, nb);
     double total[64], scan[64];
     const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
-    for (int mode = 0; mode <= avx2; ++mode) {
+    // mode 0 scalar, 1 avx2, 2 avx2 with the bounded search (SEAMS_FLAG_FAST, the cli default)
+    for (int mode = 0; mode <= 2 * avx2; ++mode) {
         uint64_t edits = 0;
         for (int r = 0; r < runs; ++r) {
-            seams_diff_input in = {a, a_len, b, b_len, &e.a, &e.b, mode ? SEAMS_FLAG_AVX2 : 0};
+            seams_diff_input in = {a, a_len, b, b_len, &e.a, &e.b, (mode ? SEAMS_FLAG_AVX2 : 0) | (mode == 2 ? SEAMS_FLAG_FAST : 0)};
             double t0 = now_ms();
             if (seams_diff(&in, &e.scratch, &e.script) != SEAMS_OK) { puts("diff failed"); return 1; }
             total[r] = now_ms() - t0;
@@ -91,7 +92,7 @@ int main(int argc, char **argv) {
         const double t = median(total, runs), s = median(scan, runs);
         // seams_diff hashes, interns and matches only the lines between the common prefix and suffix
         printf("seams %s median_ms=%.3f scan_ms=%.3f after_scan_ms=%.3f MB/s=%.0f lines/s=%.2fM records=%" PRIu64 " edits=%" PRIu64 "\n",
-               mode ? "avx2-scan" : "scalar", t, s, t - s, (a_len + b_len) / 1e3 / t, (na + nb) / 1e3 / t, e.script.count, edits);
+               mode == 2 ? "avx2-fast" : mode ? "avx2-scan" : "scalar", t, s, t - s, (a_len + b_len) / 1e3 / t, (na + nb) / 1e3 / t, e.script.count, edits);
     }
     return 0;
 }
