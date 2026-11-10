@@ -32,3 +32,20 @@ jobs:
       - run: gh release create "$GITHUB_REF_NAME" seams-linux-x86_64.tar.gz seams-web.tar.gz --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+
+  windows:
+    needs: release
+    runs-on: windows-latest
+    defaults: { run: { shell: bash } }
+    steps:
+      - uses: actions/checkout@v4
+      - run: choco install nasm -y --no-progress && echo "C:/Program Files/NASM" >> $GITHUB_PATH
+      - uses: mlugg/setup-zig@v2
+      - run: ZIG=zig bash tools/build-windows.sh
+      - name: attach seams.exe
+        run: |
+          mkdir -p out/seams && cp build/win/seams.exe README.md LICENSE out/seams/
+          (cd out && 7z a -tzip ../seams-windows-x86_64.zip seams > /dev/null)
+          gh release upload "$GITHUB_REF_NAME" seams-windows-x86_64.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
