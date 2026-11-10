@@ -88,9 +88,10 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
   function requestFrame() {
     if (frameQueued || destroyed) return;
     frameQueued = true;
-    requestAnimationFrame(() => {
+    requestAnimationFrame((now) => {
       frameQueued = false;
       if (destroyed) return;
+      if (glide) stepGlide(now);
       renderer.draw(ix.decorate);
       ix.updateMirror();
       placeThumb();
@@ -132,7 +133,26 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
     requestFrame();
   }
 
-  const scrollBy = (rows) => { if (current) { renderer.scrollTo(renderer.scrollRow + rows); requestFrame(); } };
+  const scrollBy = (rows) => { if (current) { glide = null; renderer.scrollTo(renderer.scrollRow + rows); requestFrame(); } };
+  // a mouse wheel notch or a page key glides to its target instead of jumping there in one frame.
+  // the easing runs on elapsed time, so it covers the same ground in the same time at 30 fps
+  // (a laptop saving power) as at 145. trackpads already send small steps and stay 1:1.
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+  let glide = null;
+  const glideBy = (rows) => {
+    if (!current) return;
+    if (calm.matches) return scrollBy(rows);
+    const to = Math.min(Math.max(0, (glide ? glide.to : renderer.scrollRow) + rows), renderer.maxScrollRow);
+    glide = { to, last: glide ? glide.last : performance.now() };
+    requestFrame();
+  };
+  function stepGlide(now) {
+    const dt = Math.min(100, Math.max(0, now - glide.last));
+    glide.last = now;
+    const next = renderer.scrollRow + (glide.to - renderer.scrollRow) * (1 - Math.exp(-dt / 55));
+    if (Math.abs(glide.to - next) < 0.01) { renderer.scrollTo(glide.to); glide = null; }
+    else { renderer.scrollTo(next); queueMicrotask(requestFrame); }
+  }
   canvas.addEventListener('wheel', (e) => {
     if (!current) return;
     e.preventDefault();
@@ -140,7 +160,8 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
     if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       renderer.scrollColumn = Math.max(0, renderer.scrollColumn + Math.round((e.deltaX || e.deltaY) * unit));
       requestFrame();
-    } else scrollBy(e.deltaY * unit);
+    } else if (e.deltaMode !== 0 || Math.abs(e.deltaY) >= 50) glideBy(e.deltaY * unit);   // a wheel notch
+    else scrollBy(e.deltaY * unit);                                                         // a trackpad
   }, { passive: false });
   // touch: drag to scroll (selection stays a mouse and pen gesture)
   let touchY = null;
@@ -153,7 +174,7 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
   }, { passive: true });
   canvas.addEventListener('keydown', (e) => {
     const keys = { ArrowDown: 1, ArrowUp: -1, PageDown: renderer.pageRows, PageUp: -renderer.pageRows, ' ': renderer.pageRows };
-    if (e.key in keys) scrollBy(keys[e.key]);
+    if (e.key in keys) (Math.abs(keys[e.key]) > 1 ? glideBy : scrollBy)(keys[e.key]);
     else if (e.key === 'Home') { renderer.scrollTo(0); requestFrame(); }
     else if (e.key === 'End') { renderer.scrollTo(Infinity); requestFrame(); }
     else if (e.key === 'n' || e.key === 'p') api.nextChange(e.key === 'n' ? 1 : -1);
