@@ -139,17 +139,17 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
   // (a laptop saving power) as at 145. trackpads already send small steps and stay 1:1.
   const calm = matchMedia('(prefers-reduced-motion: reduce)');
   let glide = null;
-  const glideBy = (rows) => {
+  const glideBy = (rows, tau = 55) => {
     if (!current) return;
     if (calm.matches) return scrollBy(rows);
     const to = Math.min(Math.max(0, (glide ? glide.to : renderer.scrollRow) + rows), renderer.maxScrollRow);
-    glide = { to, last: glide ? glide.last : performance.now() };
+    glide = { to, tau, last: glide ? glide.last : performance.now() };
     requestFrame();
   };
   function stepGlide(now) {
     const dt = Math.min(100, Math.max(0, now - glide.last));
     glide.last = now;
-    const next = renderer.scrollRow + (glide.to - renderer.scrollRow) * (1 - Math.exp(-dt / 55));
+    const next = renderer.scrollRow + (glide.to - renderer.scrollRow) * (1 - Math.exp(-dt / glide.tau));
     if (Math.abs(glide.to - next) < 0.01) { renderer.scrollTo(glide.to); glide = null; }
     else { renderer.scrollTo(next); queueMicrotask(requestFrame); }
   }
@@ -164,13 +164,22 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
     else scrollBy(e.deltaY * unit);                                                         // a trackpad
   }, { passive: false });
   // touch: drag to scroll (selection stays a mouse and pen gesture)
-  let touchY = null;
-  canvas.addEventListener('touchstart', (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+  // letting go mid-swipe keeps the diff moving and slows it down the way phones do (time-based, so the
+  // same flick travels the same distance at any frame rate)
+  let touchY = null, touchT = 0, speed = 0;
+  canvas.addEventListener('touchstart', (e) => { touchY = e.touches[0].clientY; touchT = performance.now(); speed = 0; glide = null; }, { passive: true });
   canvas.addEventListener('touchmove', (e) => {
     if (touchY === null) return;
-    const y = e.touches[0].clientY;
-    scrollBy(((touchY - y) * renderer.dpr) / renderer.cell.h);
-    touchY = y;
+    const y = e.touches[0].clientY, now = performance.now(), rows = ((touchY - y) * renderer.dpr) / renderer.cell.h;
+    const dt = Math.max(1, now - touchT);
+    speed = 0.8 * (rows / dt) + 0.2 * speed;             // rows per ms, smoothed over the last few moves
+    scrollBy(rows);
+    touchY = y; touchT = now;
+  }, { passive: true });
+  canvas.addEventListener('touchend', () => {
+    touchY = null;
+    if (performance.now() - touchT > 80 || Math.abs(speed) < 0.01 || calm.matches) return;   // held still before lifting: no fling
+    glideBy(speed * 325, 325);                            // an exponential slowdown from the finger's speed: it starts at exactly that speed
   }, { passive: true });
   canvas.addEventListener('keydown', (e) => {
     const keys = { ArrowDown: 1, ArrowUp: -1, PageDown: renderer.pageRows, PageUp: -renderer.pageRows, ' ': renderer.pageRows };
