@@ -28,6 +28,12 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
+/* linux can fault a mapped file in up front; macos has no such flag and pages it in on demand */
+#ifdef MAP_POPULATE
+#define SEAMS_POPULATE MAP_POPULATE
+#else
+#define SEAMS_POPULATE 0
+#endif
 
 /* avx2 and bmi1 on the cpu, and the os saving the 256-bit registers (cpuid and xgetbv directly, so it
    needs no compiler runtime) */
@@ -75,7 +81,7 @@ static uint8_t *read_all(const char *path, uint64_t *length) {
         if ((uint64_t)st.st_size > SEAMS_MAX_BYTES) { fprintf(stderr, "seams: %s is larger than 4 GiB\n", path); exit(2); }
         const int fd = open(path, O_RDONLY);
         if (fd < 0) { perror(path); exit(2); }
-        void *p = mmap(0, (size_t)st.st_size, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
+        void *p = mmap(0, (size_t)st.st_size, PROT_READ, MAP_PRIVATE | SEAMS_POPULATE, fd, 0);
         close(fd);
         if (p == MAP_FAILED) { perror(path); exit(2); }
         *length = (uint64_t)st.st_size;

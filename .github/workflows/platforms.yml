@@ -1,4 +1,4 @@
-name: windows
+name: platforms
 
 # seams.exe has to say exactly what the linux build says: same diff, same merge, byte for byte,
 # and its patches have to rebuild files exactly (no \n to \r\n anywhere).
@@ -48,3 +48,25 @@ jobs:
           time $E ci/old.ts ci/new.ts > /dev/null || true
       - uses: actions/upload-artifact@v4
         with: { name: seams-windows-x86_64, path: build/win/seams.exe }
+
+  macos:
+    needs: reference
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: reference, path: ci }
+      - run: brew install nasm
+      - run: bash tools/build-macos.sh
+      - name: same answers as linux
+        run: |
+          E=./build/mac/seams
+          $E ci/old.ts ci/new.ts > ci/mac.diff || [ $? -eq 1 ]
+          cmp ci/mac.diff ci/linux.diff && echo "diff: identical to linux"
+          $E merge ci/base.txt ci/ours.txt ci/theirs.txt > ci/mac.merge || [ $? -eq 1 ]
+          cmp ci/mac.merge ci/linux.merge && echo "merge: identical to linux"
+          $E patch ci/old.ts ci/new.ts > ci/p.seams || [ $? -eq 1 ]
+          $E apply ci/old.ts ci/p.seams > ci/rebuilt.ts
+          cmp ci/rebuilt.ts ci/new.ts && echo "patch + apply: byte for byte"
+          if $E apply ci/new.ts ci/p.seams > /dev/null; then echo "wrong base was accepted"; exit 1; else echo "wrong base: refused"; fi
+          time $E ci/old.ts ci/new.ts > /dev/null || true
