@@ -1,0 +1,50 @@
+name: windows
+
+# seams.exe has to say exactly what the linux build says: same diff, same merge, byte for byte,
+# and its patches have to rebuild files exactly (no \n to \r\n anywhere).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y nasm
+      - run: make build/seams
+      - name: fixtures and what linux says about them
+        run: |
+          mkdir -p ci
+          node tools/ci-fixtures.mjs ci
+          ./build/seams ci/old.ts ci/new.ts > ci/linux.diff || [ $? -eq 1 ]
+          ./build/seams merge ci/base.txt ci/ours.txt ci/theirs.txt > ci/linux.merge || [ $? -eq 1 ]
+      - uses: actions/upload-artifact@v4
+        with: { name: reference, path: ci }
+
+  windows:
+    needs: reference
+    runs-on: windows-latest
+    defaults: { run: { shell: bash } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: reference, path: ci }
+      - run: choco install nasm -y --no-progress && echo "C:/Program Files/NASM" >> $GITHUB_PATH
+      - uses: mlugg/setup-zig@v2
+      - run: ZIG=zig bash tools/build-windows.sh
+      - name: same answers as linux
+        run: |
+          E=./build/win/seams.exe
+          $E ci/old.ts ci/new.ts > ci/win.diff || [ $? -eq 1 ]
+          cmp ci/win.diff ci/linux.diff && echo "diff: identical to linux"
+          $E merge ci/base.txt ci/ours.txt ci/theirs.txt > ci/win.merge || [ $? -eq 1 ]
+          cmp ci/win.merge ci/linux.merge && echo "merge: identical to linux"
+          $E patch ci/old.ts ci/new.ts > ci/p.seams || [ $? -eq 1 ]
+          $E apply ci/old.ts ci/p.seams > ci/rebuilt.ts
+          cmp ci/rebuilt.ts ci/new.ts && echo "patch + apply: byte for byte"
+          if $E apply ci/new.ts ci/p.seams > /dev/null; then echo "wrong base was accepted"; exit 1; else echo "wrong base: refused"; fi
+          time $E ci/old.ts ci/new.ts > /dev/null || true
+      - uses: actions/upload-artifact@v4
+        with: { name: seams-windows-x86_64, path: build/win/seams.exe }

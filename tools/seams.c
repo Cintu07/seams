@@ -18,15 +18,40 @@
 #include <string.h>
 #include <time.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>
+#define isatty _isatty
+#define STDOUT_FILENO 1
+#else
+#include <sys/mman.h>
 #include <unistd.h>
+#endif
+
+/* avx2 and bmi1 on the cpu, and the os saving the 256-bit registers (cpuid and xgetbv directly, so it
+   needs no compiler runtime) */
+#include <cpuid.h>
+static int has_avx2(void) {
+    unsigned a, b, c, d;
+    if (!__get_cpuid(1, &a, &b, &c, &d) || !(c & (1u << 27)) || !(c & (1u << 28))) return 0;   /* osxsave, avx */
+    unsigned lo, hi;
+    __asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+    if ((lo & 6) != 6) return 0;                                                            /* xmm and ymm state */
+    if (!__get_cpuid_count(7, 0, &a, &b, &c, &d)) return 0;
+    return (b & (1u << 5)) && (b & (1u << 3));                                              /* avx2, bmi1 */
+}
 
 /* anonymous pages arrive zeroed and page aligned, and only pages the engine touches cost anything */
 static void *aligned(uint64_t elements, size_t size) {
     const size_t bytes = (size_t)(elements ? elements : 1) * size;
+#ifdef _WIN32
+    void *p = VirtualAlloc(0, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);   /* zeroed, 64 KiB aligned */
+    if (!p) { fputs("seams: out of memory\n", stderr); exit(2); }
+#else
     void *p = mmap(0, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (p == MAP_FAILED) { fputs("seams: out of memory\n", stderr); exit(2); }
+#endif
     return p;
 }
 
@@ -44,6 +69,7 @@ static uint64_t count_lines(const uint8_t *p, uint64_t len) {
 
 /* maps regular files; reads anything else (pipes, /dev/null) to EOF */
 static uint8_t *read_all(const char *path, uint64_t *length) {
+#ifndef _WIN32
     struct stat st;
     if (strcmp(path, "-") != 0 && stat(path, &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
         if ((uint64_t)st.st_size > SEAMS_MAX_BYTES) { fprintf(stderr, "seams: %s is larger than 4 GiB\n", path); exit(2); }
@@ -55,6 +81,7 @@ static uint8_t *read_all(const char *path, uint64_t *length) {
         *length = (uint64_t)st.st_size;
         return p;
     }
+#endif
     FILE *f = strcmp(path, "-") == 0 ? stdin : fopen(path, "rb");
     if (!f) { perror(path); exit(2); }
     size_t cap = 1 << 16, len = 0;
@@ -73,6 +100,11 @@ static uint8_t *read_all(const char *path, uint64_t *length) {
 }
 
 static double now_ms(void) {
+#ifdef _WIN32
+    LARGE_INTEGER f, c;
+    QueryPerformanceFrequency(&f); QueryPerformanceCounter(&c);
+    return (double)c.QuadPart * 1e3 / (double)f.QuadPart;
+#endif
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
     return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
@@ -151,7 +183,7 @@ typedef struct {
 } diff_result;
 
 static uint64_t engine_flags(int minimal) {
-    const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
+    const int avx2 = has_avx2();
     return (avx2 ? SEAMS_FLAG_AVX2 : 0) | (minimal ? 0 : SEAMS_FLAG_FAST);
 }
 
@@ -199,7 +231,7 @@ static int command_apply(const char *old_path, const char *patch_path) {
     memcpy(&b_len, patch + 24, sizeof b_len);
     const uint64_t na = count_lines(a, a_len);
     seams_line_table ta = {aligned(na, 4), aligned(na, 4), aligned(na, 8), aligned(na, 4), 0, na};
-    const int avx2 = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi");
+    const int avx2 = has_avx2();
     if ((avx2 ? seams_scan_avx2(a, a_len, &ta) : seams_scan_scalar(a, a_len, &ta)) != SEAMS_OK) { fputs("seams: scan failed\n", stderr); return 2; }
     seams_patch_input in = {a, a_len, &ta, 0, 0, 0, 0, patch, patch_len, aligned(b_len, 1), b_len, 0};
     const int status = seams_apply_patch(&in);
@@ -240,6 +272,16 @@ int main(int argc, char **argv) {
     uint64_t context = 3;
     const char *label[2] = {0, 0}, *path[2] = {0, 0};
     int labels = 0, paths = 0, stat = 0, timing = 0, minimal = 0;
+#ifdef _WIN32
+    /* bytes in, bytes out: no \n to \r\n translation, or apply would not rebuild files exactly */
+    _setmode(_fileno(stdout), _O_BINARY);
+    _setmode(_fileno(stdin), _O_BINARY);
+    {   /* let the console show the colours */
+        DWORD mode;
+        HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (GetConsoleMode(out, &mode)) SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+#endif
     colour = isatty(STDOUT_FILENO);
     for (int i = 1; i < argc; ++i) {
         const char *x = argv[i];

@@ -3,6 +3,14 @@
 
 #include <stdint.h>
 
+/* the engine uses the System V calling convention everywhere. on Windows, gcc and clang call it
+   through sysv_abi and save the registers Windows expects around each call; MSVC cannot. */
+#if defined(_WIN32) && (defined(__GNUC__) || defined(__clang__))
+#define SEAMS_ABI __attribute__((sysv_abi))
+#else
+#define SEAMS_ABI
+#endif
+
 enum {
     SEAMS_OK = 0,
     SEAMS_EINVAL = -1,
@@ -94,34 +102,34 @@ typedef struct seams_apply_input {
     uint64_t out_len;
 } seams_apply_input;
 
-int seams_probe(void);
+SEAMS_ABI int seams_probe(void);
 
 /* Active output columns must be separate, 32-byte-aligned, capacity-element arrays.
    Input and output storage must not overlap. Hash/ID columns are unused by scanning.
    On error count is zero and any array entries already written are unspecified.
    NULL input/columns are allowed for zero bytes; the table itself is required. */
-int seams_scan_scalar(const uint8_t *bytes, uint64_t length, seams_line_table *lines);
+SEAMS_ABI int seams_scan_scalar(const uint8_t *bytes, uint64_t length, seams_line_table *lines);
 
 /* Caller must first verify AVX2, BMI1, and operating-system AVX state support. */
-int seams_scan_avx2(const uint8_t *bytes, uint64_t length, seams_line_table *lines);
+SEAMS_ABI int seams_scan_avx2(const uint8_t *bytes, uint64_t length, seams_line_table *lines);
 
 /* Exact number of lines scanning will produce, so callers can allocate once. */
-uint64_t seams_count_lines(const uint8_t *bytes, uint64_t length);
+SEAMS_ABI uint64_t seams_count_lines(const uint8_t *bytes, uint64_t length);
 
-uint64_t seams_hash_line(const uint8_t *bytes, uint64_t length);
-int seams_hash_lines(const uint8_t *bytes, seams_line_table *lines);
-int seams_intern_reset(seams_intern *intern);
-int seams_intern_lines(const uint8_t *bytes, seams_line_table *lines, seams_intern *intern, int side);
+SEAMS_ABI uint64_t seams_hash_line(const uint8_t *bytes, uint64_t length);
+SEAMS_ABI int seams_hash_lines(const uint8_t *bytes, seams_line_table *lines);
+SEAMS_ABI int seams_intern_reset(seams_intern *intern);
+SEAMS_ABI int seams_intern_lines(const uint8_t *bytes, seams_line_table *lines, seams_intern *intern, int side);
 
 /* Fills the script, and line_start/line_len of a_lines and b_lines. Lines inside the
    common byte prefix and suffix of the two files are left out of hashing and
    interning, so their line_hash and line_id entries are not written. Minimal: the
    sum of a_count + b_count over all records is the smallest possible, unless
    SEAMS_FLAG_FAST is set (see above). */
-int seams_diff(const seams_diff_input *in, seams_diff_scratch *scratch, seams_script *out);
+SEAMS_ABI int seams_diff(const seams_diff_input *in, seams_diff_scratch *scratch, seams_script *out);
 
 /* Writes b into out using a, b's line table and the script. Validates the script. */
-int seams_apply(seams_apply_input *in);
+SEAMS_ABI int seams_apply(seams_apply_input *in);
 
 /* A self-contained patch carries the inserted bytes, so a can be turned into b without b.
    Layout (little endian): u32 magic "SEAM", u32 version 1, u64 a_len, u64 hash of a,
@@ -147,9 +155,9 @@ typedef struct seams_patch_input {
 
 enum { SEAMS_EWRONGBASE = -5, SEAMS_PATCH_HEADER_BYTES = 40, SEAMS_PATCH_RECORD_BYTES = 16 };
 
-uint64_t seams_patch_size(const seams_patch_input *in);
-int seams_write_patch(seams_patch_input *in);
-int seams_apply_patch(seams_patch_input *in);
+SEAMS_ABI uint64_t seams_patch_size(const seams_patch_input *in);
+SEAMS_ABI int seams_write_patch(seams_patch_input *in);
+SEAMS_ABI int seams_apply_patch(seams_patch_input *in);
 
 /* Three-way merge of two edits of one base. to_ours and to_theirs are scripts from base to
    ours and from base to theirs. Changes that overlap or touch in base form one chunk: a chunk
@@ -174,6 +182,6 @@ typedef struct seams_merge_input {
     uint64_t conflicts;
 } seams_merge_input;
 
-int seams_merge(seams_merge_input *in);
+SEAMS_ABI int seams_merge(seams_merge_input *in);
 
 #endif
