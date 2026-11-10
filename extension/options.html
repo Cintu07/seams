@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>seams options</title>
+<style>
+body { font: 14px/1.5 "IBM Plex Mono", Consolas, monospace; background: #c3dbc8; color: #1b2a21; max-width: 560px; margin: 40px auto; padding: 0 16px; }
+input { width: 100%; font: inherit; padding: 6px 8px; box-sizing: border-box; }
+button { font: inherit; margin-top: 10px; padding: 5px 14px; }
+p { color: #45624e; }
+</style>
+<h1>seams</h1>
+<p>Public pull requests need nothing. For private repositories, or to lift GitHub's 60 requests an hour,
+paste a fine-grained token with read-only access to pull requests and contents. It stays in your
+browser's extension storage and is only sent to api.github.com.</p>
+<input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
+<button id="save">save</button> <span id="done"></span>
+<script src="options.js"></script>

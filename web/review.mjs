@@ -22,7 +22,7 @@ const CSS = `
 .seams-review .file.on { background: rgba(127,127,127,.24); }
 .seams-review .file .name { overflow: hidden; text-overflow: ellipsis; flex: 1; direction: rtl; text-align: left; }
 .seams-review .file .st { width: 12px; font-weight: 600; }
-.seams-review .add { color: #2f7d3f; } .seams-review .del { color: #a4432e; } .seams-review .mod { color: #a07a1f; }
+.seams-review .add { color: #2f7d3f; } .seams-review .del { color: #a4432e; } .seams-review .mod { color: #a07a1f; } .seams-review .ren { color: #3d6fa8; }
 .seams-review .n { font-variant-numeric: tabular-nums; font-size: 12px; }
 .seams-review .main { min-width: 0; min-height: 0; }
 @media (max-width: 700px) { .seams-review { grid-template-columns: 1fr; grid-template-rows: 38% 1fr; } .seams-review .files { border-right: 0; border-bottom: 1px solid var(--seams-line, rgba(0,0,0,.15)); } }
@@ -41,7 +41,9 @@ export function createReview(element, options = {}) {
   let files = [], shown = [], current = -1, counts = [], workers = [], generation = 0;
   const onChange = options.onChange ?? (() => {});
 
-  const status = (f) => (f.old == null ? 'add' : f.new == null ? 'del' : 'mod');
+  const status = (f) => (f.old == null ? 'add' : f.new == null ? 'del' : f.oldPath ? 'ren' : 'mod');
+  const LETTER = { add: 'A', del: 'D', mod: 'M', ren: 'R' };
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const totals = () => {
     let del = 0, ins = 0, done = 0;
     for (const c of counts) if (c) { del += c.deleted; ins += c.inserted; done++; }
@@ -56,7 +58,7 @@ export function createReview(element, options = {}) {
     for (let k = first; k < last; ++k) {
       const i = shown[k], f = files[i], c = counts[i], st = status(f);
       const n = c ? `<span class="n add">+${c.inserted}</span><span class="n del">−${c.deleted}</span>` : '<span class="n">…</span>';
-      html += `<div class="file${i === current ? ' on' : ''}" data-i="${i}" style="position:absolute;top:${k * ROW}px;left:0;right:0"><span class="st ${st}">${st === 'add' ? 'A' : st === 'del' ? 'D' : 'M'}</span><span class="name" title="${f.path.replace(/"/g, '&quot;')}">&lrm;${f.path.replace(/&/g, '&amp;').replace(/</g, '&lt;')}&lrm;</span>${n}</div>`;
+      html += `<div class="file${i === current ? ' on' : ''}" data-i="${i}" style="position:absolute;top:${k * ROW}px;left:0;right:0"><span class="st ${st}">${LETTER[st]}</span><span class="name" title="${esc(f.oldPath ? `${f.oldPath} → ${f.path}` : f.path)}">&lrm;${esc(f.path)}&lrm;</span>${n}</div>`;
     }
     inner.innerHTML = html;
   }
@@ -76,7 +78,7 @@ export function createReview(element, options = {}) {
     if (k >= 0 && (k * ROW < list.scrollTop || (k + 1) * ROW > list.scrollTop + list.clientHeight)) list.scrollTop = k * ROW - list.clientHeight / 2;
     drawList();
     const f = files[i];
-    const result = await viewer.setFiles(bytesOf(f.old), bytesOf(f.new), { name: f.path });
+    const result = await viewer.setFiles(bytesOf(f.old), bytesOf(f.new), { name: f.path, oldName: f.oldPath ?? f.path, newName: f.path });
     onChange({ index: i, path: f.path, result });
     return result;
   }
@@ -92,7 +94,11 @@ export function createReview(element, options = {}) {
     const mine = ++generation;
     workers.forEach((w) => w.terminate());
     const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 2) - 1));
-    workers = Array.from({ length: n }, () => new Worker(new URL('./count_worker.mjs', import.meta.url), { type: 'module' }));
+    // a page importing seams from another site (by url) can't start that site's worker directly
+    const url = new URL('./count_worker.mjs', import.meta.url);
+    const start = () => url.origin === location.origin ? new Worker(url, { type: 'module' })
+      : new Worker(URL.createObjectURL(new Blob([`import ${JSON.stringify(url.href)};`], { type: 'text/javascript' })), { type: 'module' });
+    workers = Array.from({ length: n }, start);
     const t0 = performance.now();
     let next = 0;
     const feed = (w) => {

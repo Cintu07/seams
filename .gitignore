@@ -14,3 +14,4 @@
 /pkg/dist/
 *.tgz
 /_site/
+/extension/lib/

@@ -73,14 +73,28 @@ while the first file is on screen. Only the rows in view exist in the DOM. A gen
 3.8M-line pull request shows its first file 60 ms after opening and has every file diffed in about
 a second. `]` and `[` move between files; the box filters paths.
 
+Review any branch of any repo, like a pull request (it compares with the merge base):
+
 ```sh
-node tools/seams-review.mjs path/to/repo main my-branch -o review.json   # every changed text file
+cd path/to/repo
+node path/to/seams/tools/seams-review.mjs main..my-branch      # opens it in your browser
+node path/to/seams/tools/seams-review.mjs main..my-branch -o review.json
 ```
 
-```js
-import { createReview } from 'https://cintu07.github.io/seams/lib/review.mjs';
-const review = createReview(el);
-await review.setFiles((await (await fetch('review.json')).json()).files);   // [{ path, old, new }]
+Every changed text file is read in one `git cat-file --batch` pass and renames are followed:
+3,000 commits of tinygrad (1,136 files, 78 renames) are ready in 0.7 s. The page, the engine and
+your code are served from your machine only.
+
+### On GitHub
+
+`extension/` is a browser extension that puts an **open in seams** button next to the title of any
+GitHub pull request. It lists the files through the API and fetches both sides at the exact commits;
+a pull request over 100 files comes as two repository snapshots unpacked while they download, keeping
+only the changed files. A 1,150-file pull request (tinygrad, 3,000 commits) opens in about 20 s, most
+of it download, and is diffed in under 0.4 s. A token in the options page covers private repositories.
+
+```sh
+node pkg/build.mjs && node extension/build.mjs   # then load extension/ unpacked (developer mode)
 ```
 
 ## Packs: diff ahead of time
