@@ -1,21 +1,58 @@
 <!doctype html>
-<!-- the link preview card: render at 1200x630 with node site/share.mjs -->
+<!-- the link preview card (1200x630): node site/share.mjs renders it to site/assets/share.png.
+     serve the repo root, since it draws the site's own skyline from web/look.mjs -->
 <html>
 <head>
 <meta charset="utf-8">
 <style>
 @font-face { font-family: "Plex"; src: url("fonts/ibm-plex-mono-400.woff2"); font-weight: 400; }
+@font-face { font-family: "Plex"; src: url("fonts/ibm-plex-mono-500.woff2"); font-weight: 500; }
 @font-face { font-family: "Dot"; src: url("fonts/dotgothic16-400.woff2"); }
 html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
-body { background: #c3dbc8; color: #1b2a21; display: flex; flex-direction: column; justify-content: center; padding: 0 96px; box-sizing: border-box; }
-h1 { font: 400 196px/1 "Dot", monospace; margin: 0 0 36px -8px; letter-spacing: 4px; text-shadow: 6px 6px 0 rgba(253, 251, 239, 0.7); }
-p { font: 400 40px/1.35 "Plex", monospace; margin: 0; max-width: 980px; color: #1b2a21; }
-.rule { width: 120px; height: 8px; background: #256f3e; margin: 0 0 34px; }
+body { background: #c3dbc8; color: #1b2a21; position: relative; font-family: Plex, monospace; }
+#city { position: absolute; left: 0; right: 0; bottom: 0; width: 1200px; height: 290px; image-rendering: pixelated; }
+.words { position: absolute; left: 76px; top: 70px; width: 560px; }
+h1 { font: 400 150px/1 "Dot", monospace; margin: 0 0 26px -6px; letter-spacing: 3px; text-shadow: 5px 5px 0 rgba(253, 251, 239, 0.75); }
+.rule { width: 96px; height: 7px; background: #256f3e; margin: 0 0 26px; }
+p { font-size: 29px; line-height: 1.4; margin: 0; }
+.diff { position: absolute; right: 70px; top: 82px; width: 440px; background: #e2eee2; border: 2px solid #9fbfa6; border-radius: 12px;
+  box-shadow: 8px 8px 0 rgba(27, 42, 33, 0.18); font-size: 17px; line-height: 34px; overflow: hidden; }
+.bar { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 2px solid #9fbfa6; background: #d3e6d6; font-size: 14px; color: #45624e; line-height: 18px; }
+.bar i { width: 11px; height: 11px; border-radius: 50%; background: #9fbfa6; display: inline-block; margin-top: 3px; }
+.bar span { margin-left: 6px; }
+.row { display: flex; white-space: pre; padding-right: 12px; }
+.n { width: 66px; text-align: right; padding-right: 10px; color: #6f8f78; flex: none; }
+.m { width: 18px; flex: none; }
+.del { background: #ecc8c0; } .del .m { color: #a4432e; }
+.ins { background: #c8e3cc; } .ins .m { color: #256f3e; }
+.del b { background: #dfa294; font-weight: 400; } .ins b { background: #97cfa3; font-weight: 400; }
+.kw { color: #7a3f8e; } .fn { color: #2c5f8a; } .num { color: #a4432e; }
+.foot { position: absolute; left: 76px; bottom: 9px; font-size: 18px; color: #fdfbef; text-shadow: 0 1px 2px rgba(0,0,0,.35); letter-spacing: .5px; }
 </style>
 </head>
 <body>
+<canvas id="city"></canvas>
+<div class="words">
   <h1>seams</h1>
   <div class="rule"></div>
   <p>a line diff engine written by hand in x86-64 assembly and webassembly</p>
+</div>
+<div class="diff">
+  <div class="bar"><i></i><i></i><i></i><span>million.ts · 1,000,000 lines</span></div>
+  <div class="row"><span class="n">48210</span><span class="m"> </span><span><span class="kw">export function</span> <span class="fn">rowsAt</span>(t) {</span></div>
+  <div class="row"><span class="n">48211</span><span class="m"> </span><span>  <span class="kw">const</span> line = t * <span class="num">521</span>;</span></div>
+  <div class="row del"><span class="n">48212</span><span class="m">-</span><span>  <span class="kw">return</span> line <b>| 0</b>;</span></div>
+  <div class="row ins"><span class="n">48212</span><span class="m">+</span><span>  <span class="kw">return</span> line <b>&gt;&gt;&gt; 0</b>;</span></div>
+  <div class="row"><span class="n">48213</span><span class="m"> </span><span>}</span></div>
+</div>
+<div class="foot">cintu07.github.io/seams</div>
+<script type="module">
+import { THEMES, drawSkyline } from '../web/look.mjs';
+drawSkyline(document.getElementById('city'), THEMES.sage, 11);
+// the card above the city takes the sky's own top colour, so the canvas edge disappears
+const [r, g, b] = document.getElementById('city').getContext('2d').getImageData(0, 0, 1, 1).data;
+document.body.style.background = `rgb(${r}, ${g}, ${b})`;
+document.fonts.ready.then(() => { window.ready = true; });
+</script>
 </body>
 </html>
