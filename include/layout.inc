@@ -22,6 +22,11 @@
 %define SEAMS_FLAG_FAST 2
 ; with FAST, a middle-snake search gives up after max(this, 2^(bits(n)/2)) rounds
 %define SEAMS_MIN_COST_LIMIT 4096
+; FAST: past this cost, a front that has just followed a long run of matches may be split at
+; early (xdiff's heuristic): a run of SEAMS_SNAKE_COUNT matches, reaching SEAMS_K_HEUR times the cost
+%define SEAMS_HEUR_MIN_COST 256
+%define SEAMS_SNAKE_COUNT 20
+%define SEAMS_K_HEUR 4
 %define SEAMS_HASH_MULTIPLIER 0x9e3779b97f4a7c15
 %define SEAMS_KV_UNREACHED_LOW -1
 %define SEAMS_KV_UNREACHED_HIGH 0x7fffffffffffffff
@@ -195,7 +200,8 @@ struc seams_box
     .bmax: resq 1
     .split1: resq 1
     .split2: resq 1
-    .padding: resq 3
+    .snake: resq 1              ; this cost's rounds followed a run longer than SEAMS_SNAKE_COUNT
+    .padding: resq 2
 endstruc
 
 %endif

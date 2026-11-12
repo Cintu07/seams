@@ -50,6 +50,12 @@ build/seams: tools/seams.c include/seams.h $(ENGINE)
 build/diff_bench: bench/diff_bench.c include/seams.h $(ENGINE)
 	$(CC) $(CFLAGS) $< $(ENGINE) -o $@
 
+build/stage_bench: bench/stage_bench.c include/seams.h $(ENGINE)
+	$(CC) $(CFLAGS) $< $(ENGINE) -o $@
+
+build/myers_model: bench/myers_model.c include/seams.h $(ENGINE)
+	$(CC) $(CFLAGS) $< $(ENGINE) -o $@
+
 bench: build/bench build/diff_bench build/corpus_bench
 	./build/bench
 	./bench/run_diff.sh

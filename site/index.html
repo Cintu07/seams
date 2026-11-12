@@ -208,7 +208,7 @@ await viewer.setPack('/pr.seamspack');</code></pre></div>
     <details><summary>is my code uploaded anywhere?</summary><p>no. the site diffs in your tab, the cli and the local review never touch the network, and the extension talks only to github, for the pull request you opened.</p></details>
     <details><summary>is it free?</summary><p>yes, mit licence, all of it. the source is on <a href="https://github.com/Cintu07/seams">github</a>.</p></details>
     <details><summary>does it replace github's review?</summary><p>for reading, mostly: every file, comments in and out, live updates. approving, requesting changes and suggestions still happen on github.</p></details>
-    <details><summary>where is it still behind?</summary><p>on files with thousands of edits scattered all through them, imara-diff is faster than seams' exact mode. there's no native arm64 build yet, and the windows binary isn't signed. syntax highlighting is a small set of lexers, not full grammars.</p></details>
+    <details><summary>where is it still behind?</summary><p>with <code>--minimal</code>, on files with thousands of edits scattered all through them, seams is slower than imara-diff's default mode, because it insists on the shortest diff; the default fast mode is now ahead of imara there too. there's no native arm64 build yet, and the windows binary isn't signed. syntax highlighting is a small set of lexers, not full grammars.</p></details>
   </div>
 </section>
 

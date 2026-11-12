@@ -97,6 +97,24 @@ function* cutoffCases(n) {
   }
 }
 
+// big files with dense scattered edits, where every edited line also occurs elsewhere: the search
+// gets costly while still following long runs of matches, so with SEAMS_FAST both engines take
+// the early split at a long snake (seams_good_snake) and have to take it at the same point
+function* denseCases(n) {
+  for (let k = 0; k < n; ++k) {
+    const lines = 20000 + 10000 * k, kinds = 400 + 200 * k;
+    const base = Array.from({ length: lines }, (_, i) => `row ${(i * 7919) % kinds}`);
+    const edited = base.slice();
+    for (let i = random() % 12; i < lines; i += 1 + random() % 24) {
+      const r = random() % 3;
+      if (r === 0) edited[i] = `row ${random() % kinds}`;
+      else if (r === 1) edited.splice(i, 1);
+      else edited.splice(i, 0, `row ${random() % kinds}`);
+    }
+    yield [enc.encode(base.join('\n') + '\n'), enc.encode(edited.join('\n') + '\n')];
+  }
+}
+
 function* corpusCases(dir) {
   if (!dir || !existsSync(join(dir, 'count'))) return;
   const count = Number(readFileSync(join(dir, 'count'), 'utf8'));
@@ -109,7 +127,11 @@ function nativeScripts(batch, scratch) {
   let o = buf.writeUInt32LE(batch.length, 0);
   for (const [a, b] of batch) { o = buf.writeUInt32LE(a.length, o); buf.set(a, o); o += a.length; o = buf.writeUInt32LE(b.length, o); buf.set(b, o); o += b.length; }
   writeFileSync(join(scratch, 'pairs.bin'), buf);
-  execFileSync(join(root, 'build/script_dump'), [join(scratch, 'pairs.bin'), join(scratch, 'out.bin')], { stdio: 'inherit' });
+  const args = [join(root, 'build/script_dump'), join(scratch, 'pairs.bin'), join(scratch, 'out.bin')];
+  // build/script_dump is a linux binary; from windows node it runs through wsl, with the paths translated
+  // (windows environment variables don't reach wsl, so SEAMS_FAST is passed on through env)
+  if (process.platform === 'win32') execFileSync('wsl', ['-e', 'env', ...(fast ? ['SEAMS_FAST=1'] : []), ...args.map((p) => p.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (m, d) => `/mnt/${d.toLowerCase()}`))], { stdio: 'inherit' });
+  else execFileSync(args[0], args.slice(1), { stdio: 'inherit' });
   const out = readFileSync(join(scratch, 'out.bin'));
   const scripts = [];
   for (let p = 0; p < out.length;) {
@@ -123,6 +145,8 @@ function nativeScripts(batch, scratch) {
 function fail(what, index, a, b) {
   const show = (x) => JSON.stringify(Buffer.from(x.subarray(0, 200)).toString('latin1'));
   console.error(`FAIL [wasm ${buildName}]: ${what} pair=${index} seed=0x${startSeed.toString(16)} a_len=${a.length} b_len=${b.length}`);
+  // SEAMS_DUMP=dir keeps the failing pair as files, to run through the cli or a debugger
+  if (process.env.SEAMS_DUMP) { writeFileSync(join(process.env.SEAMS_DUMP, 'fail.a'), a); writeFileSync(join(process.env.SEAMS_DUMP, 'fail.b'), b); }
   if (a.length < 200 && b.length < 200) console.error(`  a=${show(a)}\n  b=${show(b)}`);
   process.exit(1);
 }
@@ -136,7 +160,7 @@ const sameRecords = (w, n) => {
 };
 
 const scratch = mkdtempSync(join(tmpdir(), 'seams-wasm-'));
-const counts = { edge: 0, fuzz: 0, corpus: 0, cutoff: 0 };
+const counts = { edge: 0, fuzz: 0, corpus: 0, cutoff: 0, dense: 0 };
 let index = 0;
 function checkAll(kind, cases, batchSize) {
   let batch = [];
@@ -174,8 +198,9 @@ try {
   checkAll('fuzz', fuzzCases(fuzzPairs), 5000);
   checkAll('corpus', corpusCases(process.env.SEAMS_CORPUS), 300);
   checkAll('cutoff', cutoffCases(6), 6);
+  checkAll('dense', denseCases(4), 4);
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }
 console.log(`PASS [wasm ${buildName}${fast ? ', fast' : ''}]: ${counts.edge} edge, ${counts.fuzz} fuzz (seed 0x${startSeed.toString(16)}), ` +
-  `${counts.corpus} corpus, ${counts.cutoff} large shuffled pairs: scalar and SIMD scripts identical to native, apply round trip, bad scripts rejected`);
+  `${counts.corpus} corpus, ${counts.cutoff} large shuffled pairs, ${counts.dense} large dense pairs: scalar and SIMD scripts identical to native, apply round trip, bad scripts rejected`);

@@ -114,6 +114,8 @@ seams_mark_changed:
 %define id_a ecx
 %define limit rdx
 %define other rax
+%define snake_start r8
+%define snake_length r9
 seams_forward_round:
     save_registers rbx, rbp, r12, r13, r14, r15
     sub rsp, 8
@@ -134,6 +136,7 @@ seams_forward_round:
 .step_down:
     mov x, [kv + diagonal * SEAMS_U64_BYTES + SEAMS_U64_BYTES]
 .follow_snake:
+    mov snake_start, x
     mov y, x
     sub y, diagonal
     mov limit, [box + seams_box.lim1]
@@ -156,6 +159,12 @@ seams_forward_round:
     cmp x, limit
     jl .extend_snake
 .snake_followed:
+    mov snake_length, x
+    sub snake_length, snake_start
+    cmp snake_length, SEAMS_SNAKE_COUNT
+    jle .snake_noted
+    mov qword [box + seams_box.snake], 1
+.snake_noted:
     mov [kv + diagonal * SEAMS_U64_BYTES], x
     cmp qword [box + seams_box.odd], 0
     je .try_next_diagonal
@@ -198,6 +207,7 @@ seams_backward_round:
     mov x, [kv + diagonal * SEAMS_U64_BYTES + SEAMS_U64_BYTES]
     dec x
 .follow_snake:
+    mov snake_start, x
     mov y, x
     sub y, diagonal
     mov limit, x
@@ -221,6 +231,12 @@ seams_backward_round:
     cmp x, limit
     jg .extend_snake
 .snake_followed:
+    mov snake_length, snake_start
+    sub snake_length, x
+    cmp snake_length, SEAMS_SNAKE_COUNT
+    jle .snake_noted
+    mov qword [box + seams_box.snake], 1
+.snake_noted:
     mov [kv + diagonal * SEAMS_U64_BYTES], x
     cmp qword [box + seams_box.odd], 0
     jne .try_next_diagonal
@@ -255,6 +271,179 @@ seams_backward_round:
 %undef ids_a
 %undef ids_b
 %undef id_a
+%undef snake_start
+%undef snake_length
+
+; FAST, past SEAMS_HEUR_MIN_COST, after a round that followed a long run of matches (xdiff's
+; heuristic, which imara-diff uses too): a point on a front far enough along, measured as the steps
+; from its corner less its distance from the centre diagonal, and above SEAMS_K_HEUR times the
+; cost, whose last SEAMS_SNAKE_COUNT steps were all matches, is a good place to split. the
+; forward front is tried first, then the backward one; the first, highest scoring point wins.
+%define match rdi
+%define box rsi
+%define kv r8
+%define diagonal r9
+%define x r10
+%define y r11
+%define threshold r12
+%define ids_a r13
+%define ids_b r14
+%define end_b r15
+%define centre rbx
+%define score rbp
+%define step rcx
+%define id_a edx
+%define end_a rax
+%define best [rsp]
+seams_good_snake:
+    save_registers rbx, rbp, r12, r13, r14, r15
+    sub rsp, 8
+    imul threshold, rdx, SEAMS_K_HEUR
+    mov ids_a, [match + seams_match.work_a]
+    mov ids_b, [match + seams_match.work_b]
+    mov qword best, 0
+    mov kv, [match + seams_match.kv_forward]
+    mov centre, [box + seams_box.off1]
+    sub centre, [box + seams_box.off2]
+    mov diagonal, [box + seams_box.fmax]
+.next_forward:
+    cmp diagonal, [box + seams_box.fmin]
+    jl .forward_seen
+    mov x, [kv + diagonal * SEAMS_U64_BYTES]
+    mov y, x
+    sub y, diagonal
+    ; score = steps from (off1, off2) less the distance from the centre diagonal
+    mov step, diagonal
+    sub step, centre
+    mov score, step
+    neg score
+    cmovs score, step
+    neg score
+    add score, x
+    add score, y
+    sub score, [box + seams_box.off1]
+    sub score, [box + seams_box.off2]
+    cmp score, threshold
+    jle .forward_skip
+    cmp score, best
+    jle .forward_skip
+    mov step, [box + seams_box.off1]
+    add step, SEAMS_SNAKE_COUNT
+    cmp x, step
+    jl .forward_skip
+    cmp x, [box + seams_box.lim1]
+    jge .forward_skip
+    mov step, [box + seams_box.off2]
+    add step, SEAMS_SNAKE_COUNT
+    cmp y, step
+    jl .forward_skip
+    cmp y, [box + seams_box.lim2]
+    jge .forward_skip
+    ; the SEAMS_SNAKE_COUNT ids before (x, y) all match
+    lea end_a, [ids_a + x * SEAMS_U32_BYTES]
+    lea end_b, [ids_b + y * SEAMS_U32_BYTES]
+    mov step, -1
+.forward_compare:
+    mov id_a, [end_a + step * SEAMS_U32_BYTES]
+    cmp id_a, [end_b + step * SEAMS_U32_BYTES]
+    jne .forward_skip
+    cmp step, -SEAMS_SNAKE_COUNT
+    je .forward_better
+    dec step
+    jmp .forward_compare
+.forward_better:
+    mov best, score
+    mov [box + seams_box.split1], x
+    mov [box + seams_box.split2], y
+.forward_skip:
+    sub diagonal, 2
+    jmp .next_forward
+.forward_seen:
+    cmp qword best, 0
+    jg .found
+    mov kv, [match + seams_match.kv_backward]
+    mov centre, [box + seams_box.lim1]
+    sub centre, [box + seams_box.lim2]
+    mov diagonal, [box + seams_box.bmax]
+.next_backward:
+    cmp diagonal, [box + seams_box.bmin]
+    jl .backward_seen
+    mov x, [kv + diagonal * SEAMS_U64_BYTES]
+    mov y, x
+    sub y, diagonal
+    ; score = steps from (lim1, lim2) less the distance from the centre diagonal
+    mov step, diagonal
+    sub step, centre
+    mov score, step
+    neg score
+    cmovs score, step
+    neg score
+    add score, [box + seams_box.lim1]
+    add score, [box + seams_box.lim2]
+    sub score, x
+    sub score, y
+    cmp score, threshold
+    jle .backward_skip
+    cmp score, best
+    jle .backward_skip
+    cmp x, [box + seams_box.off1]
+    jle .backward_skip
+    mov step, [box + seams_box.lim1]
+    sub step, SEAMS_SNAKE_COUNT
+    cmp x, step
+    jg .backward_skip
+    cmp y, [box + seams_box.off2]
+    jle .backward_skip
+    mov step, [box + seams_box.lim2]
+    sub step, SEAMS_SNAKE_COUNT
+    cmp y, step
+    jg .backward_skip
+    ; the SEAMS_SNAKE_COUNT ids from (x, y) on all match
+    lea end_a, [ids_a + x * SEAMS_U32_BYTES]
+    lea end_b, [ids_b + y * SEAMS_U32_BYTES]
+    xor step, step
+.backward_compare:
+    mov id_a, [end_a + step * SEAMS_U32_BYTES]
+    cmp id_a, [end_b + step * SEAMS_U32_BYTES]
+    jne .backward_skip
+    cmp step, SEAMS_SNAKE_COUNT - 1
+    je .backward_better
+    inc step
+    jmp .backward_compare
+.backward_better:
+    mov best, score
+    mov [box + seams_box.split1], x
+    mov [box + seams_box.split2], y
+.backward_skip:
+    sub diagonal, 2
+    jmp .next_backward
+.backward_seen:
+    cmp qword best, 0
+    jg .found
+    xor eax, eax
+    jmp .return_found
+.found:
+    mov eax, 1
+.return_found:
+    add rsp, 8
+    restore_registers rbx, rbp, r12, r13, r14, r15
+    ret
+%undef match
+%undef box
+%undef kv
+%undef diagonal
+%undef x
+%undef y
+%undef threshold
+%undef ids_a
+%undef ids_b
+%undef end_b
+%undef centre
+%undef score
+%undef step
+%undef id_a
+%undef end_a
+%undef best
 
 ; out of budget: split at the furthest point the forward search reached. any point inside
 ; the box gives a correct script; the furthest one keeps it close to minimal
@@ -357,6 +546,7 @@ seams_split:
     mov [box + seams_box.odd], forward_centre
     xor cost, cost
 .next_cost:
+    mov qword [box + seams_box.snake], 0
     mov rdi, match
     mov rsi, box
     call seams_forward_round
@@ -371,6 +561,18 @@ seams_split:
     mov value, [match + seams_match.cost_limit]
     test value, value
     jz .next_cost
+    cmp qword [box + seams_box.snake], 0
+    je .budget_check
+    cmp cost, SEAMS_HEUR_MIN_COST
+    jbe .budget_check
+    mov rdi, match
+    mov rsi, box
+    mov rdx, cost
+    call seams_good_snake
+    test eax, eax
+    jnz .split_found
+.budget_check:
+    mov value, [match + seams_match.cost_limit]
     cmp cost, value
     jb .next_cost
     mov rdi, match

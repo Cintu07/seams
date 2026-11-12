@@ -514,6 +514,7 @@
     (local $dmin i32) (local $dmax i32) (local $fmin i32) (local $fmax i32) (local $bmin i32) (local $bmax i32)
     (local $odd i32) (local $diagonal i32) (local $x i32) (local $y i32) (local $limit i32)
     (local $cost i32) (local $best i32) (local $best_x i32) (local $best_y i32)
+    (local $snake i32) (local $start i32) (local $centre i32) (local $score i32) (local $step i32) (local $threshold i32)
     (local.set $ids_a (i32.load offset=#work_a (local.get $d)))
     (local.set $ids_b (i32.load offset=#work_b (local.get $d)))
     (local.set $kv_f (i32.load offset=#kv_f_centre (local.get $d)))
@@ -529,6 +530,7 @@
     ;; the search meets after a forward step when the two diagonal centres differ by an odd count
     (local.set $odd (i32.and (i32.sub (local.get $fmin) (local.get $bmin)) (i32.const 1)))
     (loop $next_cost
+      (local.set $snake (i32.const 0))
       ;; forward round: widen the band of diagonals by one each side, or narrow it where the box ends
       (if (i32.gt_s (local.get $fmin) (local.get $dmin))
         (then
@@ -548,6 +550,7 @@
           (if (i32.lt_s (local.get $x) (call $kv (local.get $kv_f) (i32.add (local.get $diagonal) (i32.const 1))))
             (then (local.set $x (call $kv (local.get $kv_f) (i32.add (local.get $diagonal) (i32.const 1)))))
             (else (local.set $x (i32.add (local.get $x) (i32.const 1)))))
+          (local.set $start (local.get $x))
           (local.set $y (i32.sub (local.get $x) (local.get $diagonal)))
           (local.set $limit (i32.sub (local.get $lim1) (local.get $x)))
           (if (i32.lt_s (i32.sub (local.get $lim2) (local.get $y)) (local.get $limit))
@@ -562,6 +565,7 @@
                   (local.set $x (i32.add (local.get $x) (i32.const 1)))
                   (local.set $y (i32.add (local.get $y) (i32.const 1)))
                   (br_if $extend_snake (i32.lt_s (local.get $x) (local.get $limit)))))))
+          (if (i32.gt_s (i32.sub (local.get $x) (local.get $start)) (i32.const @SNAKE_COUNT)) (then (local.set $snake (i32.const 1))))
           (call $set_kv (local.get $kv_f) (local.get $diagonal) (local.get $x))
           (if (local.get $odd)
             (then
@@ -589,6 +593,7 @@
           (local.set $x (call $kv (local.get $kv_b) (i32.sub (local.get $diagonal) (i32.const 1))))
           (if (i32.ge_s (local.get $x) (call $kv (local.get $kv_b) (i32.add (local.get $diagonal) (i32.const 1))))
             (then (local.set $x (i32.sub (call $kv (local.get $kv_b) (i32.add (local.get $diagonal) (i32.const 1))) (i32.const 1)))))
+          (local.set $start (local.get $x))
           (local.set $y (i32.sub (local.get $x) (local.get $diagonal)))
           (local.set $limit (i32.sub (local.get $x) (local.get $off1)))
           (if (i32.lt_s (i32.sub (local.get $y) (local.get $off2)) (local.get $limit))
@@ -604,6 +609,7 @@
                   (local.set $x (i32.sub (local.get $x) (i32.const 1)))
                   (local.set $y (i32.sub (local.get $y) (i32.const 1)))
                   (br_if $extend_snake (i32.gt_s (local.get $x) (local.get $limit)))))))
+          (if (i32.gt_s (i32.sub (local.get $start) (local.get $x)) (i32.const @SNAKE_COUNT)) (then (local.set $snake (i32.const 1))))
           (call $set_kv (local.get $kv_b) (local.get $diagonal) (local.get $x))
           (if (i32.eqz (local.get $odd))
             (then
@@ -616,6 +622,75 @@
       ;; out of budget: split at the furthest point the forward search reached, the same
       ;; diagonals in the same order as seams_cut_short in src/myers.asm
       (local.set $cost (i32.add (local.get $cost) (i32.const 1)))
+      ;; FAST, past HEUR_MIN_COST, after a long run of matches: split early at a point far along a
+      ;; front whose last SNAKE_COUNT steps all matched (seams_good_snake in src/myers.asm)
+      (if (i32.and (i32.and (i32.ne (i32.load offset=#cost_limit (local.get $d)) (i32.const 0)) (local.get $snake))
+                   (i32.gt_u (local.get $cost) (i32.const @HEUR_MIN_COST)))
+        (then
+          (local.set $threshold (i32.mul (local.get $cost) (i32.const @K_HEUR)))
+          (local.set $best (i32.const 0))
+          (local.set $centre (i32.sub (local.get $off1) (local.get $off2)))
+          (local.set $diagonal (local.get $fmax))
+          (block $forward_seen
+            (loop $next_forward
+              (br_if $forward_seen (i32.lt_s (local.get $diagonal) (local.get $fmin)))
+              (local.set $x (call $kv (local.get $kv_f) (local.get $diagonal)))
+              (local.set $y (i32.sub (local.get $x) (local.get $diagonal)))
+              (local.set $step (i32.sub (local.get $diagonal) (local.get $centre)))
+              (if (i32.lt_s (local.get $step) (i32.const 0)) (then (local.set $step (i32.sub (i32.const 0) (local.get $step)))))
+              (local.set $score (i32.sub (i32.sub (i32.add (local.get $x) (local.get $y)) (i32.add (local.get $off1) (local.get $off2))) (local.get $step)))
+              (if (i32.and (i32.and (i32.gt_s (local.get $score) (local.get $threshold)) (i32.gt_s (local.get $score) (local.get $best)))
+                           (i32.and (i32.and (i32.ge_s (local.get $x) (i32.add (local.get $off1) (i32.const @SNAKE_COUNT))) (i32.lt_s (local.get $x) (local.get $lim1)))
+                                    (i32.and (i32.ge_s (local.get $y) (i32.add (local.get $off2) (i32.const @SNAKE_COUNT))) (i32.lt_s (local.get $y) (local.get $lim2)))))
+                (then
+                  (local.set $step (i32.const 1))
+                  (block $not_a_snake
+                    (loop $compare
+                      (br_if $not_a_snake (i32.ne
+                        (i32.load (i32.add (local.get $ids_a) (i32.shl (i32.sub (local.get $x) (local.get $step)) (i32.const 2))))
+                        (i32.load (i32.add (local.get $ids_b) (i32.shl (i32.sub (local.get $y) (local.get $step)) (i32.const 2))))))
+                      (if (i32.eq (local.get $step) (i32.const @SNAKE_COUNT))
+                        (then
+                          (local.set $best (local.get $score))
+                          (local.set $best_x (local.get $x))
+                          (local.set $best_y (local.get $y))
+                          (br $not_a_snake)))
+                      (local.set $step (i32.add (local.get $step) (i32.const 1)))
+                      (br $compare)))))
+              (local.set $diagonal (i32.sub (local.get $diagonal) (i32.const 2)))
+              (br $next_forward)))
+          (if (i32.gt_s (local.get $best) (i32.const 0)) (then (return (local.get $best_x) (local.get $best_y))))
+          (local.set $centre (i32.sub (local.get $lim1) (local.get $lim2)))
+          (local.set $diagonal (local.get $bmax))
+          (block $backward_seen
+            (loop $next_backward
+              (br_if $backward_seen (i32.lt_s (local.get $diagonal) (local.get $bmin)))
+              (local.set $x (call $kv (local.get $kv_b) (local.get $diagonal)))
+              (local.set $y (i32.sub (local.get $x) (local.get $diagonal)))
+              (local.set $step (i32.sub (local.get $diagonal) (local.get $centre)))
+              (if (i32.lt_s (local.get $step) (i32.const 0)) (then (local.set $step (i32.sub (i32.const 0) (local.get $step)))))
+              (local.set $score (i32.sub (i32.sub (i32.add (local.get $lim1) (local.get $lim2)) (i32.add (local.get $x) (local.get $y))) (local.get $step)))
+              (if (i32.and (i32.and (i32.gt_s (local.get $score) (local.get $threshold)) (i32.gt_s (local.get $score) (local.get $best)))
+                           (i32.and (i32.and (i32.gt_s (local.get $x) (local.get $off1)) (i32.le_s (local.get $x) (i32.sub (local.get $lim1) (i32.const @SNAKE_COUNT))))
+                                    (i32.and (i32.gt_s (local.get $y) (local.get $off2)) (i32.le_s (local.get $y) (i32.sub (local.get $lim2) (i32.const @SNAKE_COUNT))))))
+                (then
+                  (local.set $step (i32.const 0))
+                  (block $not_a_snake
+                    (loop $compare
+                      (br_if $not_a_snake (i32.ne
+                        (i32.load (i32.add (local.get $ids_a) (i32.shl (i32.add (local.get $x) (local.get $step)) (i32.const 2))))
+                        (i32.load (i32.add (local.get $ids_b) (i32.shl (i32.add (local.get $y) (local.get $step)) (i32.const 2))))))
+                      (if (i32.eq (local.get $step) (i32.const @SNAKE_COUNT_LESS_ONE))
+                        (then
+                          (local.set $best (local.get $score))
+                          (local.set $best_x (local.get $x))
+                          (local.set $best_y (local.get $y))
+                          (br $not_a_snake)))
+                      (local.set $step (i32.add (local.get $step) (i32.const 1)))
+                      (br $compare)))))
+              (local.set $diagonal (i32.sub (local.get $diagonal) (i32.const 2)))
+              (br $next_backward)))
+          (if (i32.gt_s (local.get $best) (i32.const 0)) (then (return (local.get $best_x) (local.get $best_y))))))
       (if (i32.and (i32.ne (i32.load offset=#cost_limit (local.get $d)) (i32.const 0))
                    (i32.ge_u (local.get $cost) (i32.load offset=#cost_limit (local.get $d))))
         (then

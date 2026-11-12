@@ -195,21 +195,27 @@ with `bench/data/pull_pairs.sh`. The Rust harness is in `bench/imara/`; fixtures
 
 On the kernel corpus seams takes 166 ms against 319 ms for imara-diff's default Myers, and its
 scripts are 188 edits shorter in total. Most real edits leave long identical stretches at both ends
-of a file; seams skips them before hashing. On generated files with sparse edits it is level with or
-faster than imara. On dense edits (10,000 changes spread through the file) it is 2.2 to 2.7 times
-slower with `--minimal`, because it returns the minimal script and imara's default gives that up for
-speed. The bounded default (`SEAMS_FLAG_FAST`) narrows that but does not close it (median ms, one
-vCPU, `bench/diff_bench.c` against imara's default Myers):
+of a file; seams skips them before hashing.
+
+Dense edits (10,000 changes spread through the file) used to be where imara won. With `--minimal`
+seams returns the minimal script and pays for it. The default fast mode now has the early split
+that git's xdiff and imara use: once a search has cost more than 256 steps, a point far along a
+front whose last 20 steps were all matching lines is taken as the split, without waiting for the
+two fronts to meet. On these files it finds the same minimal edit count while doing about a fifth
+of the work (`bench/myers_model.c` is the C model used to try it before writing it in assembly).
+Median ms, one vCPU, `bench/diff_bench.c` against imara-diff 0.2's default Myers:
 
 | pair | seams exact | seams fast | imara myers | edits, seams / imara |
 |---|---|---|---|---|
-| 1M lines, 100 edits | 76 | 89 | 125 | 274 / 274 |
-| 1M lines, 10,000 edits | 285 | 188 | 133 | 26,255 / 26,257 |
-| 100k lines, 10,000 edits | 39 | 44 | 15 | 24,724 / 24,796 |
-| 50k lines, all different | 3.3 | 3.3 | 3.7 | 100,000 / 100,000 |
+| 1M lines, 100 edits | 78 | 75 | 93 | 274 / 274 |
+| 1M lines, 10,000 edits | 290 | 89 | 115 | 26,255 / 26,257 |
+| 100k lines, 10,000 edits | 42 | 12.5 | 16.1 | 24,724 / 24,796 |
+| 50k lines, all different | 3.2 | 3.2 | 3.1 | 100,000 / 100,000 |
 
-On sparse edits fast mode costs a little (the budget bookkeeping) and changes nothing; dense edits
-are where imara's Myers is still ahead.
+The last row is level within run-to-run noise (an earlier run had imara at 3.7). Shuffled files,
+the case the budget was made for, are unchanged: they have no long runs of matching lines, so the
+early split never fires there. The browser engine takes the same splits; on the 100k-line pair its
+fast mode went from 51 to 18 ms. `bench/stage_bench.c` times each stage on its own.
 
 ## License
 
