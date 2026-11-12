@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>seams · a diff viewer for files too big for everything else</title>
-<meta name="description" content="seams opens a million-line diff in a fifth of a second and scrolls it at your screen's refresh rate. The diff engine is hand-written assembly and WebAssembly; the view is drawn with WebGL.">
+<meta name="description" content="seams is a line diff engine and viewer. The engine is hand-written x86-64 assembly and WebAssembly, the view is drawn with WebGL: a million-line diff opens in a fifth of a second, a 1,200-file pull request is diffed in a quarter, and GitHub comments stay in sync.">
 <meta name="theme-color" content="#c3dbc8">
 <meta property="og:title" content="seams">
 <meta property="og:description" content="A diff viewer for files too big for everything else: a million lines in a fifth of a second, scrolled at your screen's refresh rate.">
@@ -24,11 +24,11 @@
 <header class="bar">
   <a class="mark" href="#top">seams</a>
   <nav>
+    <a href="#watch">watch</a>
     <a href="#try">try it</a>
+    <a href="#guide">guide</a>
     <a href="#numbers">numbers</a>
-    <a href="#uses">uses</a>
-    <a href="#how">how</a>
-    <a href="#get">get it</a>
+    <a href="https://cintu07.github.io/posts/seams/">blog</a>
     <a href="https://github.com/Cintu07/seams">github</a>
   </nav>
   <button class="theme" id="theme" type="button" aria-label="switch between sage and dusk"><span id="mascotSmall" aria-hidden="true"></span></button>
@@ -39,15 +39,58 @@
 <section class="hero">
   <canvas id="city" aria-hidden="true"></canvas>
   <div class="hero-card">
+    <a class="news" href="#guide-github"><b>new</b> comments sync with github<span class="long">&nbsp;pull requests</span></a>
     <h1>seams</h1>
     <p class="tagline">a diff viewer for files too big for everything else.</p>
-    <p class="sub">a million-line diff opens in a fifth of a second and scrolls at your screen's refresh rate. the diff engine is hand-written assembly, ported to hand-written webassembly; the view is drawn with webgl.</p>
+    <p class="sub">seams is a line diff engine and the viewer around it. the engine is hand-written x86-64 assembly, written a second time in webassembly for the browser, and the view is drawn with webgl. a million-line diff opens in a fifth of a second and scrolls at your screen's refresh rate.</p>
     <p class="actions">
-      <a class="btn" href="#try">open the demo</a>
+      <a class="btn" href="#watch">watch it work</a>
       <button class="btn ghost" type="button" id="millionTop">try a million lines</button>
     </p>
+    <a class="blog" href="https://cintu07.github.io/posts/seams/">
+      <span class="blog-icon" aria-hidden="true"></span>
+      <span><b>the blog post is here</b><small>how it was built, bugs included · 8 min read</small></span>
+      <span class="blog-arrow" aria-hidden="true">→</span>
+    </a>
   </div>
   <div class="mascot" id="mascot" aria-hidden="true"></div>
+  <p class="facts" aria-label="at a glance"><span>v0.3</span><span>mit licence</span><span>linux · windows · mac</span><span>chrome &amp; edge extension</span><span>nothing leaves your machine</span></p>
+</section>
+
+<section class="watch" id="watch">
+  <div class="section-head">
+    <h2>watch it</h2>
+    <p>three screen recordings on one laptop, in real time. nothing is sped up, and the numbers on screen are the ones the page measured as it ran.</p>
+  </div>
+  <div class="theater">
+    <div class="screen" id="screen">
+      <video id="film" playsinline preload="metadata" muted></video>
+      <button class="bigplay" id="bigplay" type="button" aria-label="play with sound"><span></span></button>
+      <div class="caption" id="caption"></div>
+      <div class="controls">
+        <button type="button" id="playBtn" class="ctl" aria-label="play"></button>
+        <span class="time" id="time">0:00</span>
+        <div class="scrub" id="scrub" role="slider" tabindex="0" aria-label="seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="loaded"></i><b id="played"></b></div>
+        <span class="time" id="length">0:00</span>
+        <button type="button" id="muteBtn" class="ctl" aria-label="sound on"></button>
+        <button type="button" id="fullBtn" class="ctl" aria-label="full screen"></button>
+      </div>
+    </div>
+    <ol class="reel" id="reel">
+      <li><button type="button" data-film="million" data-sound="1" class="on">
+        <img src="media/million.jpg" alt="" loading="lazy" width="160" height="90">
+        <span><b>a million lines, then the terminal</b><small>the site's million-line demo, split view, find; then the cli: diff, patch, apply, and a patch refusing the wrong file · 1:33 · with music</small></span>
+      </button></li>
+      <li><button type="button" data-film="pull-request">
+        <img src="media/pull-request.jpg" alt="" loading="lazy" width="160" height="90">
+        <span><b>tinygrad as one pull request</b><small>3,000 commits of real history, 1,218 files, all diffed in 255 ms, then filtered down to the five that matter · 0:55</small></span>
+      </button></li>
+      <li><button type="button" data-film="versus">
+        <img src="media/versus.jpg" alt="" loading="lazy" width="160" height="90">
+        <span><b>next to @pierre/diffs</b><small>the same million-line pair, opened at the same moment in the same browser. one of them is drawn before the other has started · 0:25</small></span>
+      </button></li>
+    </ol>
+  </div>
 </section>
 
 <section class="try" id="try">
@@ -82,6 +125,94 @@
   </div>
 </section>
 
+<section class="guide" id="guide">
+  <span id="get"></span>
+  <div class="section-head">
+    <h2>guide</h2>
+    <p>four ways in. pick the one that matches where your diff lives. none of them send your code anywhere.</p>
+  </div>
+  <div class="tabs" role="tablist" aria-label="ways to use seams">
+    <button type="button" role="tab" id="tab-github" aria-controls="guide-github" aria-selected="true">github pull requests</button>
+    <button type="button" role="tab" id="tab-cli" aria-controls="guide-cli" aria-selected="false" tabindex="-1">command line</button>
+    <button type="button" role="tab" id="tab-branch" aria-controls="guide-branch" aria-selected="false" tabindex="-1">a local branch</button>
+    <button type="button" role="tab" id="tab-app" aria-controls="guide-app" aria-selected="false" tabindex="-1">in your own app</button>
+    <button type="button" role="tab" id="tab-keys" aria-controls="guide-keys" aria-selected="false" tabindex="-1">keys</button>
+  </div>
+
+  <div class="panel" role="tabpanel" id="guide-github" aria-labelledby="tab-github">
+    <ol class="steps">
+      <li><b>get the extension.</b> download <code>seams-extension.zip</code> from the <a href="https://github.com/Cintu07/seams/releases/latest">latest release</a> and unzip it somewhere it can stay.</li>
+      <li><b>load it.</b> open <code>chrome://extensions</code> (or <code>edge://extensions</code>), turn on developer mode, click <em>load unpacked</em> and pick the folder.</li>
+      <li><b>open any pull request.</b> an <em>open in seams</em> button sits next to the title. it opens the whole pull request in a new tab, every file at its exact commit.</li>
+      <li><b>add a token</b> (optional) in the extension's options: a fine-grained token with <em>contents: read</em> and <em>pull requests: read and write</em>. it opens private repositories, lets you comment, and checks for changes every 10 seconds instead of every 2 minutes.</li>
+    </ol>
+    <div class="callouts">
+      <div><b>comments go both ways</b><span>github's review comments show as pins on their lines. hover a line number, click <em>+</em>, write, <kbd>ctrl</kbd> <kbd>enter</kbd>: it lands on the pull request as yours.</span></div>
+      <div><b>pushes show up by themselves</b><span>a new commit is picked up while the tab is open. only files that changed are fetched again, and you stay on the same file and line.</span></div>
+      <div><b>big ones too</b><span>over 100 files, both sides come down as two snapshots unpacked while they download. a 1,150-file pull request opens in about 20 s.</span></div>
+    </div>
+  </div>
+
+  <div class="panel" role="tabpanel" id="guide-cli" aria-labelledby="tab-cli" hidden>
+    <ol class="steps">
+      <li><b>download</b> from the <a href="https://github.com/Cintu07/seams/releases/latest">latest release</a>: <code>seams-linux-x86_64.tar.gz</code> (one static binary), <code>seams-windows-x86_64.zip</code>, or <code>seams-macos-x86_64.tar.gz</code> (apple silicon runs it through rosetta).</li>
+      <li><b>diff two files.</b> the output is a unified diff, like <code>diff -u</code>.</li>
+    </ol>
+<div class="code"><button type="button" class="copy">copy</button><pre><code>seams old.txt new.txt                 # unified diff
+seams --minimal old.txt new.txt       # the exact smallest diff, however long it takes
+seams patch old new &gt; change.seams    # a patch that carries its own lines
+seams apply old change.seams &gt; new    # refused if old isn't the file it was made from
+seams merge base ours theirs          # three-way merge, git's conflict markers</code></pre></div>
+    <p class="hint">as git's diff tool: <code>GIT_EXTERNAL_DIFF=tools/seams-git git diff</code>. windows may warn the first time you run <code>seams.exe</code>, because the binary isn't signed yet.</p>
+  </div>
+
+  <div class="panel" role="tabpanel" id="guide-branch" aria-labelledby="tab-branch" hidden>
+    <ol class="steps">
+      <li><b>clone seams</b> once. you need node 18 or newer.</li>
+      <li><b>run it inside any git repository</b> with a range, the way you'd give it to <code>git diff</code>. it reads both sides straight from git and opens your browser.</li>
+    </ol>
+<div class="code"><button type="button" class="copy">copy</button><pre><code>git clone https://github.com/Cintu07/seams
+cd your-repo
+node ../seams/tools/seams-review.mjs main..my-branch</code></pre></div>
+    <p class="hint">renames are followed, binary files are skipped, and the server only listens on your machine. this is the one to use for an agent's branch before it becomes a pull request.</p>
+  </div>
+
+  <div class="panel" role="tabpanel" id="guide-app" aria-labelledby="tab-app" hidden>
+    <ol class="steps">
+      <li><b>import it by url.</b> no package manager: about 100 kb of plain modules and a 5 kb wasm file. for your own server, unpack <code>seams-web.tar.gz</code> from the release and serve the folder.</li>
+      <li><b>or diff ahead of time.</b> <code>seams-pack</code> diffs on your server or in ci and writes a pack; the browser opens it with nothing left to compute. <code>--page</code> also writes a page whose first screen is already in the html.</li>
+    </ol>
+<div class="code"><button type="button" class="copy">copy</button><pre><code>import { createDiffViewer } from 'https://cintu07.github.io/seams/lib/index.mjs';
+
+const viewer = createDiffViewer(el, { theme: 'sage' });
+await viewer.setFiles(before, after, { name: 'main.ts' });
+
+// diffed ahead of time:  node tools/seams-pack.mjs old new -o pr.seamspack
+await viewer.setPack('/pr.seamspack');</code></pre></div>
+    <p class="hint">react: <code>&lt;SeamsDiff oldFile={a} newFile={b} name="main.ts" /&gt;</code> from <code>react.mjs</code>. a whole pull request with a file list: <code>createReview(el).setFiles([{ path, old, new }])</code>.</p>
+  </div>
+
+  <div class="panel" role="tabpanel" id="guide-keys" aria-labelledby="tab-keys" hidden>
+    <dl class="keys">
+      <div><dt><kbd>n</kbd> <kbd>p</kbd></dt><dd>next and previous change</dd></div>
+      <div><dt><kbd>v</kbd></dt><dd>unified or side by side</dd></div>
+      <div><dt><kbd>ctrl</kbd> <kbd>f</kbd></dt><dd>find in the whole diff, not just what's on screen</dd></div>
+      <div><dt>drag, <kbd>ctrl</kbd> <kbd>c</kbd></dt><dd>select and copy, across as many lines as you like</dd></div>
+      <div><dt><kbd>]</kbd> <kbd>[</kbd></dt><dd>next and previous file in a pull request</dd></div>
+      <div><dt>type in the box</dt><dd>filter a pull request's files by path</dd></div>
+      <div><dt>hover a line number</dt><dd><em>+</em> to comment on that line (github, with a token)</dd></div>
+      <div><dt><kbd>space</kbd> <kbd>page down</kbd> <kbd>home</kbd> <kbd>end</kbd></dt><dd>what you'd expect</dd></div>
+    </dl>
+  </div>
+
+  <div class="faq">
+    <details><summary>is my code uploaded anywhere?</summary><p>no. the site diffs in your tab, the cli and the local review never touch the network, and the extension talks only to github, for the pull request you opened.</p></details>
+    <details><summary>is it free?</summary><p>yes, mit licence, all of it. the source is on <a href="https://github.com/Cintu07/seams">github</a>.</p></details>
+    <details><summary>does it replace github's review?</summary><p>for reading, mostly: every file, comments in and out, live updates. approving, requesting changes and suggestions still happen on github.</p></details>
+    <details><summary>where is it still behind?</summary><p>on files with thousands of edits scattered all through them, imara-diff is faster than seams' exact mode. there's no native arm64 build yet, and the windows binary isn't signed. syntax highlighting is a small set of lexers, not full grammars.</p></details>
+  </div>
+</section>
+
 <section class="numbers" id="numbers">
   <div class="section-head">
     <h2>numbers</h2>
@@ -111,11 +242,11 @@
     <figcaption>a 1,000,000-line diff, opened and scrolled. same laptop (rtx 5060, 145 hz), same edge, same files, same scroll gestures.</figcaption>
   </figure>
   <div class="tiles">
+    <div class="tile"><b>255 ms</b><span>to diff all 1,218 files of a real pull request (tinygrad, 3,000 commits), matching git's totals line for line</span></div>
+    <div class="tile"><b>0.46 s</b><span>first frame of the million-line demo with the cpu slowed down 6x, and still smooth to scroll</span></div>
     <div class="tile"><b>34 ms</b><span>first screen of a 1M-line diff packed ahead of time, on a laptop at 16% battery</span></div>
-    <div class="tile"><b>7.5 KB</b><span>a self-contained patch for a 100-edit change to a 32 MB file</span></div>
-    <div class="tile"><b>5.4 KB</b><span>the whole diff engine, as webassembly</span></div>
   </div>
-  <p class="note">fair caveats: pierre computes its diff with jsdiff from two whole files, which is most of its first-screen time; its grammars are richer than seams' lexers; it has comments, annotations and a merge ui that seams does not. the scrolling gap holds either way.</p>
+  <p class="note">fair caveats: pierre computes its diff with jsdiff from two whole files, which is most of its first-screen time; its grammars are richer than seams' lexers; it has annotations and a merge ui that seams does not. the scrolling gap holds either way.</p>
 </section>
 
 <section class="uses" id="uses">
@@ -136,7 +267,7 @@
 <section class="how" id="how">
   <div class="section-head">
     <h2>how it works</h2>
-    <p>two files go in as bytes. nothing is turned into strings, nothing becomes a dom node.</p>
+    <p>two files go in as bytes. nothing is turned into strings, nothing becomes a dom node. <a href="https://cintu07.github.io/posts/seams/">the blog post</a> has the long version.</p>
   </div>
   <ol class="pipe">
     <li><b>scan</b><span>find every newline, 32 bytes at a time with avx2, 16 with simd128</span></li>
@@ -146,49 +277,19 @@
     <li><b>myers</b><span>linear-space myers on what is left, with a budget so the worst case stays bounded</span></li>
     <li><b>draw</b><span>every glyph is one instanced quad from a glyph atlas; one webgl draw call a frame, only the rows on screen</span></li>
   </ol>
-  <p class="note">the native engine is nasm x86-64; the browser engine is the same pipeline in hand-written webassembly. both produce identical edit scripts, checked on hundreds of thousands of random pairs.</p>
-</section>
-
-<section class="get" id="get">
-  <div class="section-head">
-    <h2>get it</h2>
-    <p>three ways in. none of them phone home.</p>
-  </div>
-  <div class="ways">
-    <div class="way">
-      <h3>in a web page</h3>
-<pre><code>import { createDiffViewer } from
-  'https://cintu07.github.io/seams/lib/index.mjs';
-
-const viewer = createDiffViewer(el, { theme: 'sage' });
-await viewer.setFiles(before, after, { name: 'main.ts' });</code></pre>
-      <p>no install, no package manager. it's about 100 kb of plain modules and a 5 kb wasm file. want it on your own server? grab <code>seams-web.tar.gz</code> from the releases and serve the folder.</p>
-    </div>
-    <div class="way">
-      <h3>on the command line</h3>
-<pre><code># linux x86-64, one static binary from the releases
-tar xf seams-linux-x86_64.tar.gz
-seams old new        # unified diff
-seams patch old new > p.seams
-seams apply old p.seams > new
-seams merge base ours theirs</code></pre>
-      <p>or build it yourself with <code>make</code> (nasm and gcc). as a git diff driver, <code>GIT_EXTERNAL_DIFF=tools/seams-git git diff</code>.</p>
-    </div>
-    <div class="way">
-      <h3>ahead of time</h3>
-<pre><code>node tools/seams-pack.mjs old new -o pr.seamspack
-
-viewer.setPack('/pr.seamspack')</code></pre>
-      <p>diff in ci or on your server, serve the pack compressed, open it with no diffing in the browser.</p>
-    </div>
-  </div>
+  <p class="note">the native engine is nasm x86-64; the browser engine is the same pipeline in hand-written webassembly. both produce identical edit scripts, checked on hundreds of thousands of random pairs, and the windows and mac builds give linux's answers byte for byte.</p>
 </section>
 
 </main>
 
 <footer class="foot">
-  <span>seams, by <a href="https://cintu07.github.io">pawan kalyan</a></span>
-  <span><a href="https://github.com/Cintu07/seams">source</a> · fonts: ibm plex mono, dotgothic16 (ofl)</span>
+  <div class="dither-wrap">
+    <canvas id="dither" aria-label="seams, drawn in dithered pixels; move over it to light it up, click for a ripple" role="img"></canvas>
+  </div>
+  <div class="foot-row">
+    <span>seams · a line diff engine in assembly and webassembly, and a webgl viewer. by <a href="https://cintu07.github.io">pawan kalyan</a></span>
+    <span><a href="https://cintu07.github.io/posts/seams/">blog post</a> · <a href="https://github.com/Cintu07/seams">source</a> · <a href="https://github.com/Cintu07/seams/releases/latest">releases</a> · mit · fonts: ibm plex mono, dotgothic16 (ofl)</span>
+  </div>
 </footer>
 
 <script type="module" src="main.mjs"></script>

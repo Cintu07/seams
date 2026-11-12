@@ -1,7 +1,8 @@
-// The site's one script: the real viewer, the pixel city, the theme, the three demos.
+// The site's script: the real viewer, the pixel city, the theme, the demos, the films, the guide and the footer.
 import { createDiffViewer } from './web/embed.mjs';
 import { createReview } from './web/review.mjs';
 import { THEMES, face, drawSkyline } from './web/look.mjs';
+import { dither } from './dither.mjs';
 
 const $ = (id) => document.getElementById(id);
 const storage = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -17,6 +18,7 @@ function paint() {
   $('mascot').innerHTML = face(current ? 'happy' : 'idle', { scale: 6, accent: theme.renderer.insertedMark });
   $('mascotSmall').innerHTML = face(theme.name === 'dusk' ? 'sleepy' : 'idle', { scale: 2, accent: theme.renderer.insertedMark });
   viewer.setTheme(theme.name);
+  footerArt.recolour();
 }
 $('theme').addEventListener('click', () => {
   theme = theme.name === 'sage' ? THEMES.dusk : THEMES.sage;
@@ -47,6 +49,7 @@ for (const card of document.querySelectorAll('.card[data-icon]')) card.insertAdj
 // ---------------------------------------------------------------- the viewer
 
 const viewer = createDiffViewer($('viewer'), { theme: theme.name });
+const footerArt = dither($('dither'));
 let current = null, busy = false;
 const fmt = (n) => n.toLocaleString('en');
 
@@ -180,3 +183,109 @@ $('openPr').addEventListener('click', async () => {
   $('prStats').textContent = `${files.length.toLocaleString()} files, ${lines.toLocaleString()} lines · first file on screen ${(performance.now() - t1).toFixed(0)} ms after open · diffing the rest…`;
   $('openPr').textContent = 'regenerate';
 });
+
+// ------------------------------------------------------------- the films
+// one screen and a reel beside it. in view, the chosen film plays silently as a preview; the big
+// button starts it again from the top with sound, as a proper watch
+const FILMS = {
+  million: { src: 'media/million.mp4', poster: 'media/million.jpg', title: 'a million lines, then the terminal', sound: true },
+  'pull-request': { src: 'media/pull-request.mp4', poster: 'media/pull-request.jpg', title: 'tinygrad as one pull request: 1,218 files', sound: false },
+  versus: { src: 'media/versus.mp4', poster: 'media/versus.jpg', title: 'seams (left) and @pierre/diffs (right), same million lines', sound: false },
+};
+const film = $('film'), screen = $('screen');
+const clock = (s) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
+let filmName = 'million', previewing = true;
+function load(name, { play = false, sound = false } = {}) {
+  filmName = name;
+  const f = FILMS[name];
+  film.poster = f.poster;
+  film.src = f.src;
+  film.muted = !sound;
+  $('caption').textContent = f.title;
+  $('muteBtn').hidden = !f.sound;
+  previewing = !sound;
+  screen.classList.toggle('watched', sound);
+  for (const b of document.querySelectorAll('#reel button')) b.classList.toggle('on', b.dataset.film === name);
+  syncButtons();
+  if (play) film.play().catch(() => {});
+}
+function syncButtons() {
+  $('playBtn').classList.toggle('pause', !film.paused);
+  $('playBtn').setAttribute('aria-label', film.paused ? 'play' : 'pause');
+  $('muteBtn').classList.toggle('muted', film.muted);
+  $('muteBtn').setAttribute('aria-label', film.muted ? 'sound on' : 'sound off');
+  screen.classList.toggle('playing', !film.paused);
+}
+film.addEventListener('play', syncButtons);
+film.addEventListener('pause', syncButtons);
+film.addEventListener('volumechange', syncButtons);
+film.addEventListener('loadedmetadata', () => { $('length').textContent = clock(film.duration); });
+film.addEventListener('timeupdate', () => {
+  const p = film.duration ? film.currentTime / film.duration : 0;
+  $('played').style.width = `${p * 100}%`;
+  $('time').textContent = clock(film.currentTime);
+  $('scrub').setAttribute('aria-valuenow', String(Math.round(p * 100)));
+});
+film.addEventListener('progress', () => { if (film.buffered.length && film.duration) $('loaded').style.width = `${(film.buffered.end(film.buffered.length - 1) / film.duration) * 100}%`; });
+// a preview loops; a proper watch moves on to the next film
+film.addEventListener('ended', () => {
+  if (previewing) { film.currentTime = 0; film.play().catch(() => {}); return; }
+  const names = Object.keys(FILMS), next = names[(names.indexOf(filmName) + 1) % names.length];
+  load(next, { play: true, sound: true });
+});
+const watch = () => { film.currentTime = 0; previewing = false; screen.classList.add('watched'); film.muted = false; film.play().catch(() => {}); syncButtons(); };
+$('bigplay').addEventListener('click', watch);
+$('playBtn').addEventListener('click', () => { if (film.paused) { if (previewing) watch(); else film.play(); } else film.pause(); });
+film.addEventListener('click', () => { if (previewing) watch(); else if (film.paused) film.play(); else film.pause(); });
+$('muteBtn').addEventListener('click', () => { film.muted = !film.muted; if (!film.muted) { previewing = false; screen.classList.add('watched'); } });
+$('fullBtn').addEventListener('click', () => (document.fullscreenElement ? document.exitFullscreen() : screen.requestFullscreen?.()));
+for (const b of document.querySelectorAll('#reel button')) b.addEventListener('click', () => load(b.dataset.film, { play: true, sound: true }));
+const seek = (e) => { const r = $('scrub').getBoundingClientRect(); if (film.duration) film.currentTime = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * film.duration; };
+let seeking = false;
+$('scrub').addEventListener('pointerdown', (e) => { seeking = true; $('scrub').setPointerCapture(e.pointerId); seek(e); });
+$('scrub').addEventListener('pointermove', (e) => { if (seeking) seek(e); });
+$('scrub').addEventListener('pointerup', () => { seeking = false; });
+$('scrub').addEventListener('keydown', (e) => {
+  const d = { ArrowRight: 5, ArrowLeft: -5 }[e.key];
+  if (d && film.duration) { e.preventDefault(); film.currentTime = Math.min(film.duration, Math.max(0, film.currentTime + d)); }
+});
+load('million');
+// the silent preview runs only while the screen is in view, and never for people who asked for less motion
+const calm = matchMedia('(prefers-reduced-motion: reduce)');
+new IntersectionObserver(([entry]) => {
+  if (!previewing) { if (!entry.isIntersecting) film.pause(); return; }
+  if (entry.isIntersecting && !calm.matches) film.play().catch(() => {}); else film.pause();
+}, { threshold: 0.35 }).observe(screen);
+
+// ------------------------------------------------------------- the guide
+const tabs = [...document.querySelectorAll('.tabs [role=tab]')];
+function pickTab(tab, focus = false) {
+  for (const t of tabs) {
+    const on = t === tab;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+    $(t.getAttribute('aria-controls')).hidden = !on;
+  }
+  if (focus) tab.focus();
+}
+for (const t of tabs) {
+  t.addEventListener('click', () => pickTab(t));
+  t.addEventListener('keydown', (e) => {
+    const k = tabs.indexOf(t), d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (d) { e.preventDefault(); pickTab(tabs[(k + d + tabs.length) % tabs.length], true); }
+  });
+}
+// links to a panel (the hero's "new" pill, #guide-cli and so on) open that tab
+function followHash() {
+  const tab = tabs.find((t) => `#${t.getAttribute('aria-controls')}` === location.hash);
+  if (tab) { pickTab(tab); $('guide').scrollIntoView(); }
+}
+addEventListener('hashchange', followHash);
+followHash();
+for (const button of document.querySelectorAll('.code .copy')) {
+  button.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(button.nextElementSibling.textContent); button.textContent = 'copied'; }
+    catch { button.textContent = 'select it'; }
+    setTimeout(() => { button.textContent = 'copy'; }, 1400);
+  });
+}

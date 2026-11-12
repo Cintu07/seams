@@ -11,7 +11,8 @@ const out = join(root, '_site');
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-for (const f of ['index.html', 'site.css', 'main.mjs']) cpSync(join(root, 'site', f), join(out, f));
+for (const f of ['index.html', 'site.css', 'main.mjs', 'dither.mjs']) cpSync(join(root, 'site', f), join(out, f));
+cpSync(join(root, 'site/media'), join(out, 'media'), { recursive: true });
 cpSync(join(root, 'site/fonts'), join(out, 'fonts'), { recursive: true });
 cpSync(join(root, 'site/assets'), join(out, 'assets'), { recursive: true });
 mkdirSync(join(out, 'web'));
