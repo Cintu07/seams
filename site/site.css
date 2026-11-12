@@ -221,9 +221,8 @@ main > section:not(.hero) { max-width: 1120px; margin: 0 auto; padding: 72px cla
 
 /* ------------------------------------------------------------- foot */
 .foot { margin-top: 40px; border-top: 1px solid var(--line); color: var(--soft); font-size: 13px; }
-.wordmark { margin: 0; padding: 6px 0 0; text-align: center; white-space: nowrap; overflow: hidden; user-select: none;
+.wordmark { margin: -0.1em 0 0; padding: 0 0 18px; text-align: center; white-space: nowrap; overflow: hidden; user-select: none;
   font: 400 clamp(84px, 24vw, 380px)/0.85 var(--pixel); letter-spacing: 0.06em; color: var(--ink); text-shadow: 0.025em 0.025em 0 var(--line); }
-.foot-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; max-width: 1120px; margin: 0 auto; padding: 18px clamp(16px, 4vw, 40px) 30px; }
 
 /* ------------------------------------------------------------- small screens */
 @media (max-width: 900px) {
