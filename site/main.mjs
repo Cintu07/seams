@@ -2,7 +2,6 @@
 import { createDiffViewer } from './web/embed.mjs';
 import { createReview } from './web/review.mjs';
 import { THEMES, face, drawSkyline } from './web/look.mjs';
-import { dither } from './dither.mjs';
 
 const $ = (id) => document.getElementById(id);
 const storage = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -18,14 +17,51 @@ function paint() {
   $('mascot').innerHTML = face(current ? 'happy' : 'idle', { scale: 6, accent: theme.renderer.insertedMark });
   $('mascotSmall').innerHTML = face(theme.name === 'dusk' ? 'sleepy' : 'idle', { scale: 2, accent: theme.renderer.insertedMark });
   viewer.setTheme(theme.name);
-  footerArt.recolour();
+  drawSky();
 }
 $('theme').addEventListener('click', () => {
   theme = theme.name === 'sage' ? THEMES.dusk : THEMES.sage;
   storage.set('seams-site-theme', theme.name);
   paint();
 });
-new ResizeObserver(() => drawSkyline($('city'), theme, 11)).observe($('city'));
+new ResizeObserver(() => { drawSkyline($('city'), theme, 11); drawSky(); }).observe($('city'));
+
+// the sky above the city: a soft gradient that meets the city's own sky colour, a sun (or a moon at
+// dusk), and pixel clouds drifting slowly while the hero is on screen
+const skyCanvas = $('sky'), heroEl = document.querySelector('.hero');
+const clouds = Array.from({ length: 7 }, (_, i) => ({ x: (i * 0.37) % 1, y: 0.1 + ((i * 0.53) % 1) * 0.42, w: 14 + ((i * 7) % 5) * 5, speed: 0.004 + (i % 3) * 0.003 }));
+let skyStart = performance.now(), skyFrame = 0, heroVisible = true;
+function drawSky(now = performance.now()) {
+  const px = 3, w = Math.ceil(skyCanvas.clientWidth / px), h = Math.ceil(skyCanvas.clientHeight / px);
+  if (!w || !h) return;
+  if (skyCanvas.width !== w || skyCanvas.height !== h) { skyCanvas.width = w; skyCanvas.height = h; }
+  const ctx = skyCanvas.getContext('2d'), dusk = theme.name === 'dusk';
+  const cityTop = h - Math.ceil($('city').clientHeight / px);
+  const g = ctx.createLinearGradient(0, 0, 0, Math.max(1, cityTop));
+  g.addColorStop(0, dusk ? '#1d2630' : '#e6f1e4');
+  g.addColorStop(1, theme.sky[0]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  let s = 5; const rnd = () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
+  if (dusk) { ctx.fillStyle = 'rgba(253, 251, 239, 0.7)'; for (let i = 0; i < w * 0.25; ++i) ctx.fillRect(Math.floor(rnd() * w), Math.floor(rnd() * cityTop * 0.8), 1, 1); }
+  // a round pixel disc: the sun, or a moon with two craters
+  // on a phone the words fill the middle, so the sun goes up into the corner
+  const narrow = w < 200, r = Math.max(6, Math.round(Math.min(w, h) * (narrow ? 0.045 : 0.06)));
+  const cx = Math.round(w * (narrow ? 0.88 : 0.82)), cy = narrow ? r + 5 : Math.round(Math.max(r + 4, cityTop * 0.28));
+  ctx.fillStyle = dusk ? '#fdfbef' : 'rgba(253, 248, 214, 0.95)';
+  for (let y = -r; y <= r; ++y) { const half = Math.round(Math.sqrt(r * r - y * y)); ctx.fillRect(cx - half, cy + y, half * 2 + 1, 1); }
+  if (dusk) { ctx.fillStyle = 'rgba(160, 170, 175, 0.45)'; ctx.fillRect(cx - Math.round(r * 0.4), cy - Math.round(r * 0.2), 3, 2); ctx.fillRect(cx + Math.round(r * 0.2), cy + Math.round(r * 0.35), 2, 2); }
+  else { ctx.fillStyle = 'rgba(253, 248, 214, 0.35)'; for (let y = -r - 3; y <= r + 3; ++y) { const R2 = (r + 3) * (r + 3) - y * y; if (R2 < 0) continue; const half = Math.round(Math.sqrt(R2)); ctx.fillRect(cx - half, cy + y, half * 2 + 1, 1); } }
+  // clouds: three stacked bars each, stepped like pixel art
+  const t = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : (now - skyStart) / 1000;
+  ctx.fillStyle = dusk ? 'rgba(170, 185, 196, 0.16)' : 'rgba(255, 255, 255, 0.62)';
+  for (const c of clouds) {
+    const x = Math.round((((c.x + t * c.speed) % 1.2) - 0.1) * w), y = Math.round(c.y * cityTop), cw = c.w;
+    ctx.fillRect(x, y, cw, 3); ctx.fillRect(x + 3, y - 2, cw - 8, 2); ctx.fillRect(x + 7, y - 4, Math.max(3, cw - 16), 2);
+  }
+}
+// clouds move a pixel every few seconds, so a few frames a second is plenty
+function skyLoop(now) { skyFrame = 0; drawSky(now); if (heroVisible) skyFrame = setTimeout(() => requestAnimationFrame(skyLoop), 120); }
+new IntersectionObserver(([e]) => { heroVisible = e.isIntersecting; if (heroVisible && !skyFrame) skyLoop(performance.now()); }).observe(heroEl);
 
 // small pixel pictures for the use cards: '#' ink, '+' accent
 const ICONS = {
@@ -49,7 +85,6 @@ for (const card of document.querySelectorAll('.card[data-icon]')) card.insertAdj
 // ---------------------------------------------------------------- the viewer
 
 const viewer = createDiffViewer($('viewer'), { theme: theme.name });
-const footerArt = dither($('dither'));
 let current = null, busy = false;
 const fmt = (n) => n.toLocaleString('en');
 
@@ -188,9 +223,12 @@ $('openPr').addEventListener('click', async () => {
 // one screen and a reel beside it. in view, the chosen film plays silently as a preview; the big
 // button starts it again from the top with sound, as a proper watch
 const FILMS = {
-  million: { src: 'media/million.mp4', poster: 'media/million.jpg', title: 'a million lines, then the terminal', sound: true },
-  'pull-request': { src: 'media/pull-request.mp4', poster: 'media/pull-request.jpg', title: 'tinygrad as one pull request: 1,218 files', sound: false },
-  versus: { src: 'media/versus.mp4', poster: 'media/versus.jpg', title: 'seams (left) and @pierre/diffs (right), same million lines', sound: false },
+  million: { src: 'media/million.mp4', poster: 'media/million.jpg', title: 'a million lines, then the terminal', sound: true,
+    note: 'the million-line demo on this site, split view and find, then the cli: diff, patch, apply, and a patch refusing the wrong file. with music.' },
+  'pull-request': { src: 'media/pull-request.mp4', poster: 'media/pull-request.jpg', title: 'tinygrad as one pull request: 1,218 files', sound: false,
+    note: '3,000 commits of real tinygrad history as one pull request. all 1,218 files diffed in 255 ms, then filtered down to five.' },
+  versus: { src: 'media/versus.mp4', poster: 'media/versus.jpg', title: 'seams (left) and @pierre/diffs (right), same million lines', sound: false,
+    note: 'the same million-line pair opened at the same moment in the same browser: seams on the left, @pierre/diffs on the right.' },
 };
 const film = $('film'), screen = $('screen');
 const clock = (s) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
@@ -202,6 +240,7 @@ function load(name, { play = false, sound = false } = {}) {
   film.src = f.src;
   film.muted = !sound;
   $('caption').textContent = f.title;
+  $('filmNote').textContent = f.note;
   $('muteBtn').hidden = !f.sound;
   previewing = !sound;
   screen.classList.toggle('watched', sound);

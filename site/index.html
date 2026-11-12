@@ -37,12 +37,13 @@
 <main id="top">
 
 <section class="hero">
+  <canvas id="sky" aria-hidden="true"></canvas>
   <canvas id="city" aria-hidden="true"></canvas>
   <div class="hero-card">
-    <a class="news" href="#guide-github"><b>new</b> comments sync with github<span class="long">&nbsp;pull requests</span></a>
+    <a class="news" href="#guide-github"><b>new</b> comments sync with github<span class="long"> pull requests</span></a>
     <h1>seams</h1>
     <p class="tagline">a diff viewer for files too big for everything else.</p>
-    <p class="sub">seams is a line diff engine and the viewer around it. the engine is hand-written x86-64 assembly, written a second time in webassembly for the browser, and the view is drawn with webgl. a million-line diff opens in a fifth of a second and scrolls at your screen's refresh rate.</p>
+    <p class="sub">a line diff engine in hand-written assembly and webassembly, drawn with webgl. a million-line diff opens in 0.19 s.</p>
     <p class="actions">
       <a class="btn" href="#watch">watch it work</a>
       <button class="btn ghost" type="button" id="millionTop">try a million lines</button>
@@ -54,7 +55,7 @@
     </a>
   </div>
   <div class="mascot" id="mascot" aria-hidden="true"></div>
-  <p class="facts" aria-label="at a glance"><span>v0.3</span><span>mit licence</span><span>linux · windows · mac</span><span>chrome &amp; edge extension</span><span>nothing leaves your machine</span></p>
+  <p class="facts" aria-label="at a glance"><span>v0.3</span><span>mit licence</span><span>linux · windows · mac</span><span class="wide">chrome &amp; edge extension</span><span class="wide">nothing leaves your machine</span></p>
 </section>
 
 <section class="watch" id="watch">
@@ -76,19 +77,11 @@
         <button type="button" id="fullBtn" class="ctl" aria-label="full screen"></button>
       </div>
     </div>
+    <p class="film-note" id="filmNote"></p>
     <ol class="reel" id="reel">
-      <li><button type="button" data-film="million" data-sound="1" class="on">
-        <img src="media/million.jpg" alt="" loading="lazy" width="160" height="90">
-        <span><b>a million lines, then the terminal</b><small>the site's million-line demo, split view, find; then the cli: diff, patch, apply, and a patch refusing the wrong file · 1:33 · with music</small></span>
-      </button></li>
-      <li><button type="button" data-film="pull-request">
-        <img src="media/pull-request.jpg" alt="" loading="lazy" width="160" height="90">
-        <span><b>tinygrad as one pull request</b><small>3,000 commits of real history, 1,218 files, all diffed in 255 ms, then filtered down to the five that matter · 0:55</small></span>
-      </button></li>
-      <li><button type="button" data-film="versus">
-        <img src="media/versus.jpg" alt="" loading="lazy" width="160" height="90">
-        <span><b>next to @pierre/diffs</b><small>the same million-line pair, opened at the same moment in the same browser. one of them is drawn before the other has started · 0:25</small></span>
-      </button></li>
+      <li><button type="button" data-film="million" class="on"><span class="thumb"><img src="media/million.jpg" alt="" width="320" height="180"><i>playing</i><em>1:33</em></span><b>a million lines, then the terminal</b></button></li>
+      <li><button type="button" data-film="pull-request"><span class="thumb"><img src="media/pull-request.jpg" alt="" width="320" height="180"><i>playing</i><em>0:55</em></span><b>tinygrad as one pull request</b></button></li>
+      <li><button type="button" data-film="versus"><span class="thumb"><img src="media/versus.jpg" alt="" width="320" height="180"><i>playing</i><em>0:25</em></span><b>next to @pierre/diffs</b></button></li>
     </ol>
   </div>
 </section>
@@ -283,9 +276,7 @@ await viewer.setPack('/pr.seamspack');</code></pre></div>
 </main>
 
 <footer class="foot">
-  <div class="dither-wrap">
-    <canvas id="dither" aria-label="seams, drawn in dithered pixels; move over it to light it up, click for a ripple" role="img"></canvas>
-  </div>
+  <p class="wordmark" aria-hidden="true">seams</p>
   <div class="foot-row">
     <span>seams · a line diff engine in assembly and webassembly, and a webgl viewer. by <a href="https://cintu07.github.io">pawan kalyan</a></span>
     <span><a href="https://cintu07.github.io/posts/seams/">blog post</a> · <a href="https://github.com/Cintu07/seams">source</a> · <a href="https://github.com/Cintu07/seams/releases/latest">releases</a> · mit · fonts: ibm plex mono, dotgothic16 (ofl)</span>
