@@ -8,9 +8,12 @@ button { font: inherit; margin-top: 10px; padding: 5px 14px; }
 p { color: #45624e; }
 </style>
 <h1>seams</h1>
-<p>Public pull requests need nothing. For private repositories, or to lift GitHub's 60 requests an hour,
-paste a fine-grained token with read-only access to pull requests and contents. It stays in your
-browser's extension storage and is only sent to api.github.com.</p>
+<p>Public pull requests need nothing to read. A token lifts GitHub's 60 requests an hour, opens
+private repositories, and lets seams check for new commits and comments every 10 seconds instead of
+every 2 minutes.</p>
+<p>Make a fine-grained token with <b>Contents: read</b> and <b>Pull requests: read</b>. To comment from
+seams (your comments land on the pull request as yours), give it <b>Pull requests: read and write</b>.
+It stays in your browser's extension storage and is only sent to api.github.com.</p>
 <input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
 <button id="save">save</button> <span id="done"></span>
 <script src="options.js"></script>

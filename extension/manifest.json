@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "seams for GitHub",
-  "version": "0.1.0",
-  "description": "Opens any GitHub pull request in seams: every file, diffed in your browser, however large.",
+  "version": "0.2.0",
+  "description": "Opens any GitHub pull request in seams: every file diffed in your browser, comments synced with GitHub.",
   "content_scripts": [{ "matches": ["https://github.com/*/*/pull/*"], "js": ["button.js"], "run_at": "document_idle" }],
   "options_page": "options.html",
   "permissions": ["storage"],

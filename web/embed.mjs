@@ -58,7 +58,7 @@ function injectCss() {
 
 const themeOf = (t) => (typeof t === 'string' ? THEMES[t] ?? THEMES.sage : t);
 
-export function createDiffViewer(element, { theme = 'sage', view = 'unified', fontSize = 13, lineHeight = 1.75, fontFamily } = {}) {
+export function createDiffViewer(element, { theme = 'sage', view = 'unified', fontSize = 13, lineHeight = 1.75, fontFamily, onFrame } = {}) {
   injectCss();
   let look = themeOf(theme);
   const root = document.createElement('div');
@@ -95,6 +95,7 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
       renderer.draw(ix.decorate);
       ix.updateMirror();
       placeThumb();
+      onFrame?.();
     });
   }
   function placeThumb() {
@@ -291,6 +292,40 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
       renderer.scrollTo(r - 3);
       requestFrame();
       return true;
+    },
+    /** The line under a point on the page: { line (1-based), side 'a' | 'b', gutter } or null. */
+    lineAt(clientX, clientY) {
+      if (!current) return null;
+      const box = canvas.getBoundingClientRect();
+      const px = (clientX - box.left) * renderer.dpr, py = (clientY - box.top) * renderer.dpr;
+      if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return null;
+      const { row, pane } = renderer.hit(px, py);
+      const map = renderer.split ? current.split : current.rows;
+      // split: each pane is its own file. unified: a deleted row is the old file's, every other the new one's
+      const side = pane === 'a' ? 'a' : pane === 'b' ? 'b' : map.bLine[row] >= 0 ? 'b' : 'a';
+      const line = (side === 'a' ? map.aLine : map.bLine)[row];
+      if (line < 0) return null;
+      const p = renderer.panes().find((x) => x.side === pane);
+      return { line: line + 1, side, gutter: Math.floor(px / renderer.cell.w) < p.text };
+    },
+    /** Where to pin something to a line, in css pixels from the viewer's top left: { x, y, h }, or null
+     *  when the line isn't on screen. x is the left edge of the line's pane (its gutter starts there). */
+    lineSlot(line, side = 'b') {
+      if (!current) return null;
+      const map = renderer.split ? current.split : current.rows;
+      const row = (side === 'a' ? map.aRow : map.bRow)[line - 1];
+      if (row === undefined) return null;
+      const d = renderer.dpr, h = renderer.cell.h / d, y = ((row - renderer.scrollRow) * renderer.cell.h) / d;
+      if (y < -h || y > canvas.height / d) return null;
+      const panes = renderer.panes(), p = renderer.split ? panes[side === 'a' ? 0 : 1] : panes[0];
+      return { x: (p.x0 * renderer.cell.w) / d, y, h };
+    },
+    /** The line near the top of the view; scrollToLine(line, side) puts it back in the same place. */
+    get topLine() {
+      if (!current) return null;
+      const map = renderer.split ? current.split : current.rows;
+      const row = Math.min(renderer.rowCount - 1, Math.floor(renderer.scrollRow) + 3);
+      return map.bLine[row] >= 0 ? { line: map.bLine[row] + 1, side: 'b' } : map.aLine[row] >= 0 ? { line: map.aLine[row] + 1, side: 'a' } : null;
     },
     openFind() { ix.openFind(); },
     selectedText() { return ix.selectedText(); },

@@ -93,6 +93,19 @@ a pull request over 100 files comes as two repository snapshots unpacked while t
 only the changed files. A 1,150-file pull request (tinygrad, 3,000 commits) opens in about 20 s, most
 of it download, and is diffed in under 0.4 s. A token in the options page covers private repositories.
 
+The tab stays in step with the pull request while it's open:
+
+- review comments from GitHub are pinned to their lines, with their replies;
+- hovering a line number shows a **+**, and the comment written there is posted to the pull request
+  as yours, on that line (a token with *Pull requests: read and write*). GitHub only takes line
+  comments near a change, so anywhere else it goes up as a comment on the file that starts with
+  `` `L1980` `` and comes back pinned to line 1980;
+- a push is picked up within ten seconds (two minutes without a token). Only files whose contents
+  changed are fetched again, and the view stays on the same file and line.
+
+Checking costs one request, and GitHub answers 304 when nothing changed, which doesn't count against
+a token's limit. `node extension/test_sync.mjs` runs all of it against a fake GitHub.
+
 ```sh
 node pkg/build.mjs && node extension/build.mjs   # then load extension/ unpacked (developer mode)
 ```
