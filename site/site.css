@@ -120,15 +120,6 @@ main > section:not(.hero) { max-width: 1120px; margin: 0 auto; padding: 72px cla
   background: color-mix(in srgb, #fdfbef 78%, transparent); color: #1b2a21; font-size: 13px; border: 1px solid rgba(27, 42, 33, 0.18); }
 .news b { font-weight: 500; padding: 2px 9px; border-radius: 999px; background: #256f3e; color: #fdfbef; font-size: 12px; }
 .news:hover { color: #1b2a21; border-color: rgba(27, 42, 33, 0.45); }
-.blog { display: flex; align-items: center; gap: 12px; max-width: 600px; margin: 26px auto 0; padding: 8px 14px 8px 8px; text-align: left; text-decoration: none;
-  background: color-mix(in srgb, #fdfbef 82%, transparent); color: #1b2a21; border: 1px solid rgba(27, 42, 33, 0.2); border-radius: 10px;
-  transition: border-color 140ms, background 140ms; }
-.blog:hover { color: #1b2a21; border-color: rgba(27, 42, 33, 0.5); background: #fdfbef; }
-.blog-tag { flex: none; padding: 5px 9px; border-radius: 6px; background: #1b2a21; color: #fdfbef; font: 13px/1 var(--pixel); letter-spacing: 0.06em; }
-.blog-title { flex: 1; font-size: 13px; line-height: 1.4; }
-.blog-meta { flex: none; font-size: 12px; color: #45624e; white-space: nowrap; }
-.blog-arrow { display: inline-block; margin-left: 4px; transition: transform 160ms; }
-.blog:hover .blog-arrow { transform: translateX(3px); }
 .facts { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 0; padding: 9px 16px;
   background: color-mix(in srgb, #1b2a21 72%, transparent); color: #e9f1e7; font-size: 12.5px; letter-spacing: 0.02em; }
 .facts span + span::before { content: "·"; margin: 0 12px; opacity: 0.55; }
@@ -247,10 +238,7 @@ main > section:not(.hero) { max-width: 1120px; margin: 0 auto; padding: 72px cla
   /* the two hero buttons stay side by side on a phone */
   .actions { flex-wrap: nowrap; gap: 8px; }
   .actions .btn { padding: 10px 12px; font-size: 13px; white-space: nowrap; }
-  .blog { gap: 10px; padding: 8px 10px 8px 8px; }
-  .blog-title { font-size: 13px; }
-  .blog-title .long { display: none; }
-  .code pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; padding-top: 38px; }
+        .code pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; padding-top: 38px; }
   .note code, .steps code, .hint code { overflow-wrap: anywhere; }
   /* phones: tighter sections, and the demo's options in one row that scrolls sideways */
   main > section:not(.hero) { padding: 44px 16px 4px; }
