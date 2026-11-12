@@ -26,10 +26,12 @@ jobs:
           cp build/seams README.md out/seams/
           cp tools/seams-git out/seams/ 2>/dev/null || true
           cp -r pkg/dist/. out/seams-web/
+          node extension/build.mjs && mkdir -p out/seams-extension && cp -r extension/. out/seams-extension/ && rm -f out/seams-extension/build.mjs
           [ -f LICENSE ] && cp LICENSE out/seams/ && cp LICENSE out/seams-web/
           tar -C out -czf seams-linux-x86_64.tar.gz seams
           tar -C out -czf seams-web.tar.gz seams-web
-      - run: gh release create "$GITHUB_REF_NAME" seams-linux-x86_64.tar.gz seams-web.tar.gz --title "$GITHUB_REF_NAME" --generate-notes
+          (cd out && zip -qr ../seams-extension.zip seams-extension)
+      - run: gh release create "$GITHUB_REF_NAME" seams-linux-x86_64.tar.gz seams-web.tar.gz seams-extension.zip --title "$GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
 

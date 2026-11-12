@@ -112,6 +112,17 @@ node tools/seams-pack.mjs old.ts new.ts -o change.seamspack
 viewer.setPack('/change.seamspack');            // seams-diff, or <SeamsDiff pack="..." /> in React
 ```
 
+`--page change.html` also writes a page with the first screen of the diff already in its HTML, so
+the change is readable before any script runs, and the viewer takes over on top of it at the same
+rows once the pack is in. For a 1M-line diff the text is painted at 156 ms (204 ms with the CPU
+slowed 6x) and the live viewer at 343 ms (936 ms). The page is 6 KB; the pack can still be on its
+way while the reader is already looking at the diff.
+
+`bench/slow_laptop.mjs` runs the site's million-line demo on a CPU slowed 4x or 6x through the
+DevTools protocol. Edge ignores that throttle inside workers, so the worker's diff is re-timed on the
+throttled main thread: at 6x it takes 0.4 to 0.6 s, the first frame lands at 0.46 s, and wheel
+scrolling keeps every frame.
+
 ## Use it
 
 `make` builds `build/seams`, a command-line diff that prints a standard unified diff (`patch` and
