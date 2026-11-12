@@ -268,7 +268,7 @@ main > section:not(.hero) { max-width: 1120px; margin: 0 auto; padding: 72px cla
   .thumb em { font-size: 10px; padding: 0 4px; right: 4px; bottom: 4px; }
   .thumb i { display: none !important; }
   .film-note { font-size: 12.5px; }
-  .hero { --city: clamp(200px, 32vh, 280px); }
+  .hero { --city: clamp(200px, 32vh, 280px); min-height: 0; }
   .hero-card { padding-left: 16px; padding-right: 16px; }
   .foot { margin-top: 56px; }
   .tabs button { flex: 1 1 auto; padding: 8px 10px; font-size: 12.5px; }
