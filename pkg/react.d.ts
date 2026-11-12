@@ -11,7 +11,7 @@ export interface SeamsDiffProps {
   newName?: string;
   language?: Language | null;
   view?: 'unified' | 'split';
-  theme?: 'sage' | 'dusk' | Theme;
+  theme?: 'sage' | 'dusk' | 'paper' | 'clay' | 'ink' | 'harbor' | 'clear' | Theme;
   fontSize?: number;
   className?: string;
   style?: CSSProperties;

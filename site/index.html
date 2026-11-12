@@ -98,7 +98,12 @@
         <button type="button" class="chip" data-demo="million">1,000,000 lines</button>
         <label class="chip file">your two files<input type="file" id="files" multiple></label>
       </div>
-      <button type="button" class="chip" id="viewToggle" aria-pressed="false">split view</button>
+      <div class="pick">
+        <label class="chip select"><span>theme</span><select id="viewerTheme" aria-label="viewer theme">
+          <option value="">match the page</option><option>sage</option><option>dusk</option><option>paper</option><option>clay</option><option>ink</option><option>harbor</option><option value="clear">clear (colour-blind safe)</option>
+        </select></label>
+        <button type="button" class="chip" id="viewToggle" aria-pressed="false">split view</button>
+      </div>
     </div>
     <div class="viewer" id="viewer"></div>
     <p class="viewer-stats" id="stats" aria-live="polite">loading…</p>
@@ -182,6 +187,7 @@ await viewer.setFiles(before, after, { name: 'main.ts' });
 
 // diffed ahead of time:  node tools/seams-pack.mjs old new -o pr.seamspack
 await viewer.setPack('/pr.seamspack');</code></pre></div>
+    <p class="hint">seven themes: <code>sage</code>, <code>dusk</code>, <code>paper</code>, <code>clay</code>, <code>ink</code>, <code>harbor</code>, and <code>clear</code>, which uses orange and blue instead of red and green for red-green colour blindness. or pass your own colours with the same keys as <code>THEMES.sage</code>.</p>
     <p class="hint">react: <code>&lt;SeamsDiff oldFile={a} newFile={b} name="main.ts" /&gt;</code> from <code>react.mjs</code>. a whole pull request with a file list: <code>createReview(el).setFiles([{ path, old, new }])</code>.</p>
   </div>
 

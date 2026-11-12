@@ -271,7 +271,7 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
       drawMarks();
       requestFrame();
     },
-    /** 'sage', 'dusk', or a theme object with the same shape (see THEMES). */
+    /** a theme name ('sage', 'dusk', 'paper', 'clay', 'ink', 'harbor', 'clear') or a theme object with the same shape (see THEMES). */
     setTheme(next) { look = themeOf(next); applyLook(); },
     /** Bring a 1-based line of the old ('a') or new ('b') file into view. */
     scrollToLine(line, side = 'b') {

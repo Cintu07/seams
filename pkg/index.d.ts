@@ -7,10 +7,11 @@ export interface Theme {
   renderer: Record<string, string>;
   [key: string]: unknown;
 }
-export declare const THEMES: { sage: Theme; dusk: Theme };
+export type ThemeName = 'sage' | 'dusk' | 'paper' | 'clay' | 'ink' | 'harbor' | 'clear';
+export declare const THEMES: Record<ThemeName, Theme>;
 
 export interface ViewerOptions {
-  theme?: 'sage' | 'dusk' | Theme;
+  theme?: ThemeName | Theme;
   view?: 'unified' | 'split';
   fontSize?: number;
   lineHeight?: number;
@@ -39,7 +40,7 @@ export interface DiffViewer {
   setPack(pack: string | URL | ArrayBuffer | ArrayBufferView | Blob): Promise<DiffStats | null>;
   readonly stats: DiffStats | null;
   setView(view: 'unified' | 'split'): void;
-  setTheme(theme: 'sage' | 'dusk' | Theme): void;
+  setTheme(theme: ThemeName | Theme): void;
   scrollToLine(line: number, side?: 'a' | 'b'): void;
   nextChange(direction?: 1 | -1): boolean;
   openFind(): void;

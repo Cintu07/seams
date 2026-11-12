@@ -65,6 +65,11 @@ node web/serve.mjs          # http://localhost:4174/ ; pick or drop two files
 Up/Down, Home/End, `n`/`p` for the next/previous change. A 1M-line diff scrolls within the display
 frame budget (p99 under 8 ms at 145 Hz) with 0.2 ms of CPU per frame; `web/bench_viewer.mjs` measures it.
 
+Themes: `sage`, `dusk`, `paper`, `clay`, `ink`, `harbor` and `clear`, passed as `{ theme: 'ink' }` or
+`viewer.setTheme('paper')`. `clear` marks deleted lines orange and inserted lines blue instead of
+red and green, so the two stay apart with red-green colour blindness. A theme is a plain object, so
+your own colours work too: copy `THEMES.sage` and change what you like.
+
 ## A whole pull request
 
 `web/review.mjs` puts a file list beside the viewer. Every file is diffed in the background as soon

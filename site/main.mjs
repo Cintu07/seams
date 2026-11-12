@@ -16,7 +16,7 @@ function paint() {
   drawSkyline($('city'), theme, 11);
   $('mascot').innerHTML = face(current ? 'happy' : 'idle', { scale: 6, accent: theme.renderer.insertedMark });
   $('mascotSmall').innerHTML = face(theme.name === 'dusk' ? 'sleepy' : 'idle', { scale: 2, accent: theme.renderer.insertedMark });
-  viewer.setTheme(theme.name);
+  applyViewerTheme();
   drawSky();
 }
 $('theme').addEventListener('click', () => {
@@ -84,7 +84,22 @@ for (const card of document.querySelectorAll('.card[data-icon]')) card.insertAdj
 
 // ---------------------------------------------------------------- the viewer
 
+let review = null;   // the 5,000-file pull request, made when asked for
 const viewer = createDiffViewer($('viewer'), { theme: theme.name });
+// the viewer can wear any of the seven themes; left alone it follows the page's sage or dusk
+let viewerTheme = storage.get('seams-viewer-theme') ?? '';
+if (viewerTheme && !THEMES[viewerTheme]) viewerTheme = '';
+const viewerThemeName = () => viewerTheme || theme.name;
+function applyViewerTheme() {
+  viewer.setTheme(viewerThemeName());
+  review?.viewer.setTheme(viewerThemeName());
+}
+$('viewerTheme').value = viewerTheme;
+$('viewerTheme').addEventListener('change', (e) => {
+  viewerTheme = e.target.value;
+  storage.set('seams-viewer-theme', viewerTheme);
+  applyViewerTheme();
+});
 let current = null, busy = false;
 const fmt = (n) => n.toLocaleString('en');
 
@@ -199,7 +214,6 @@ function pullRequest(count) {
   }
   return files.sort((x, y) => (x.path < y.path ? -1 : 1));
 }
-let review = null;
 $('openPr').addEventListener('click', async () => {
   const t0 = performance.now();
   const files = pullRequest(5000);
@@ -208,7 +222,7 @@ $('openPr').addEventListener('click', async () => {
   for (const f of files) lines += (f.new ?? f.old).split('\n').length - 1;
   review?.destroy();
   review = createReview($('review'), {
-    theme: theme === THEMES.dusk ? 'dusk' : 'sage',
+    theme: viewerThemeName(),
     onChange: (e) => {
       if (e.counted) $('prStats').textContent = `${files.length.toLocaleString()} files, ${lines.toLocaleString()} lines · every file diffed in the background in ${(e.ms / 1000).toFixed(1)} s · generated in ${made.toFixed(0)} ms`;
     },
