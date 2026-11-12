@@ -49,9 +49,9 @@
       <button class="btn ghost" type="button" id="millionTop">try a million lines</button>
     </p>
     <a class="blog" href="https://cintu07.github.io/posts/seams/">
-      <span class="blog-icon" aria-hidden="true"></span>
-      <span><b>the blog post is here</b><small>how it was built, bugs included · 8 min read</small></span>
-      <span class="blog-arrow" aria-hidden="true">→</span>
+      <span class="blog-tag">blog</span>
+      <span class="blog-title">how seams was built<span class="long">: a diff engine in assembly, and a viewer that opens a million lines</span></span>
+      <span class="blog-meta">8 min <span class="blog-arrow" aria-hidden="true">→</span></span>
     </a>
   </div>
   <div class="mascot" id="mascot" aria-hidden="true"></div>
@@ -269,14 +269,18 @@ await viewer.setPack('/pr.seamspack');</code></pre></div>
     <p>two files go in as bytes. nothing is turned into strings, nothing becomes a dom node. <a href="https://cintu07.github.io/posts/seams/">the blog post</a> has the long version.</p>
   </div>
   <ol class="pipe">
-    <li><b>scan</b><span>find every newline, 32 bytes at a time with avx2, 16 with simd128</span></li>
-    <li><b>trim</b><span>skip the common start and end, which is most of a real edit</span></li>
-    <li><b>hash</b><span>one 64-bit hash per line, 8 bytes at a time</span></li>
-    <li><b>intern</b><span>each distinct line becomes a number, so the diff runs on numbers only</span></li>
-    <li><b>myers</b><span>linear-space myers on what is left, with a budget so the worst case stays bounded</span></li>
-    <li><b>draw</b><span>every glyph is one instanced quad from a glyph atlas; one webgl draw call a frame, only the rows on screen</span></li>
+    <li><i>01</i><b>scan</b><span>find every newline, 32 bytes at a time with avx2, 16 with simd128</span></li>
+    <li><i>02</i><b>trim</b><span>skip the common start and end, which is most of a real edit</span></li>
+    <li><i>03</i><b>hash</b><span>one 64-bit hash per line, 8 bytes at a time</span></li>
+    <li><i>04</i><b>intern</b><span>each distinct line becomes a number, so the diff runs on numbers only</span></li>
+    <li><i>05</i><b>myers</b><span>linear-space myers on what is left, with a budget so the worst case stays bounded</span></li>
+    <li><i>06</i><b>draw</b><span>every glyph is one instanced quad from a glyph atlas; one webgl draw call a frame, only the rows on screen</span></li>
   </ol>
-  <p class="note">the native engine is nasm x86-64; the browser engine is the same pipeline in hand-written webassembly. both produce identical edit scripts, checked on hundreds of thousands of random pairs, and the windows and mac builds give linux's answers byte for byte.</p>
+  <div class="engines">
+    <div><b>native</b><span>nasm x86-64 with avx2. the linux, windows and mac builds give the same bytes.</span></div>
+    <div><b>browser</b><span>the same stages again in hand-written webassembly with simd128, about 5 kb.</span></div>
+    <div><b>checked</b><span>both produce identical edit scripts on hundreds of thousands of random pairs.</span></div>
+  </div>
 </section>
 
 </main>
