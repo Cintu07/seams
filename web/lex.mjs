@@ -1,5 +1,5 @@
-// Hand-written lexers for TypeScript/JavaScript, Rust, Python, C/C++ and Go.
-// One byte loop shared by all five; a language is a small table (comment style, string kinds,
+// Hand-written lexers for about twenty languages, from TypeScript and Rust to shell, SQL and NASM.
+// One byte loop shared by all of them; a language is a small table (comment style, string kinds,
 // word lists). A line is lexed from the state its first byte is in, which is one of the few
 // constructs that span lines: a block comment, a template / raw backtick string, a triple-quoted
 // string. lineStates() finds that state for every line in one pass, without classifying words,
@@ -54,6 +54,138 @@ const LANGUAGES = {
       uint16 uint32 uint64 uintptr any comparable`),
     constants: words('true false nil iota'),
   },
+  java: {
+    slashComments: true, triple: true, tripleDoubleOnly: true,
+    keywords: words(`abstract assert break case catch class const continue default do else enum extends final finally for
+      goto if implements import instanceof interface native new package private protected public return static strictfp
+      super switch synchronized this throw throws transient try volatile while var record sealed permits yield`),
+    types: words('boolean byte char short int long float double void String Object Integer Long Boolean List Map Set'),
+    constants: words('true false null'),
+  },
+  kotlin: {
+    slashComments: true, triple: true, tripleDoubleOnly: true,
+    keywords: words(`as break class continue do else for fun if in interface is object package return super this throw try
+      typealias typeof val var when while by catch constructor delegate dynamic field file finally get import init param
+      property receiver set setparam where actual abstract annotation companion const crossinline data enum expect external
+      final infix inline inner internal lateinit noinline open operator out override private protected public reified
+      sealed suspend tailrec vararg`),
+    types: words('Int Long Short Byte Float Double Boolean Char String Unit Any Nothing Array List Map Set'),
+    constants: words('true false null'),
+  },
+  csharp: {
+    slashComments: true, preprocessor: true,
+    keywords: words(`abstract as base break case catch checked class const continue default delegate do else enum event
+      explicit extern finally fixed for foreach goto if implicit in interface internal is lock namespace new operator out
+      override params private protected public readonly ref return sealed sizeof stackalloc static struct switch this throw
+      try typeof unchecked unsafe using virtual volatile while async await var get set init record when where yield`),
+    types: words('bool byte sbyte char decimal double float int uint long ulong short ushort object string void dynamic nint nuint'),
+    constants: words('true false null'),
+  },
+  swift: {
+    slashComments: true, triple: true, tripleDoubleOnly: true,
+    keywords: words(`associatedtype class deinit enum extension fileprivate func import init inout internal let open
+      operator private precedencegroup protocol public rethrows static struct subscript typealias var break case catch
+      continue default defer do else fallthrough for guard if in repeat return throw switch where while as is try throws
+      async await actor some any mutating nonmutating override final lazy weak unowned required convenience`),
+    types: words('Int Int8 Int16 Int32 Int64 UInt UInt8 UInt16 UInt32 UInt64 Float Double Bool String Character Void Self'),
+    constants: words('true false nil self super'),
+  },
+  scala: {
+    slashComments: true, triple: true, tripleDoubleOnly: true,
+    keywords: words(`abstract case catch class def do else extends final finally for forSome if implicit import lazy match
+      new object override package private protected return sealed super this throw trait try type val var while with yield
+      given using enum then export extension`),
+    types: words('Int Long Short Byte Float Double Boolean Char String Unit Any AnyRef Nothing Option List Map Seq'),
+    constants: words('true false null None Nil'),
+  },
+  ruby: {
+    hashComments: true,
+    keywords: words(`alias and begin break case class def do else elsif end ensure for if in module next not or
+      redo rescue retry return super then undef unless until when while yield require require_relative attr_reader
+      attr_writer attr_accessor include extend private protected public raise lambda proc`),
+    types: words(''),
+    constants: words('true false nil self'),
+  },
+  shell: {
+    hashComments: true, hashAfterSpace: true, backtick: true, backtickEscapes: true, dollarIdent: true,
+    keywords: words(`if then else elif fi case esac for select while until do done in function time return exit break
+      continue local export readonly declare typeset unset shift source alias set trap eval exec`),
+    types: words(''),
+    constants: words('true false'),
+  },
+  php: {
+    slashComments: true, hashComments: true, dollarIdent: true,
+    keywords: words(`abstract and as break callable case catch class clone const continue declare default do echo else
+      elseif empty enddeclare endfor endforeach endif endswitch endwhile enum extends final finally fn for foreach function
+      global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print
+      private protected public readonly require require_once return static switch throw trait try unset use var while xor yield`),
+    types: words('int float string bool array object mixed void never iterable self parent'),
+    constants: words('true false null TRUE FALSE NULL'),
+  },
+  lua: {
+    dashComments: true,
+    keywords: words('and break do else elseif end for function goto if in local not or repeat return then until while'),
+    types: words(''),
+    constants: words('true false nil self'),
+  },
+  sql: {
+    dashComments: true, slashComments: true, caseless: true,
+    keywords: words(`select from where and or not in is like between join left right inner outer full cross on as group by
+      order having limit offset union all distinct insert into values update set delete create table view index drop alter
+      add column primary key foreign references constraint unique default check if exists case when then else end begin
+      commit rollback transaction with recursive returning grant revoke truncate cascade asc desc over partition`),
+    types: words(`int integer bigint smallint tinyint serial bigserial decimal numeric real float double precision char
+      varchar text boolean bool date time timestamp timestamptz interval uuid json jsonb bytea blob`),
+    constants: words('true false null'),
+  },
+  zig: {
+    slashComments: true,
+    keywords: words(`addrspace align allowzero and anyframe anytype asm async await break callconv catch comptime const
+      continue defer else enum errdefer error export extern fn for if inline linksection noalias noinline nosuspend opaque
+      or orelse packed pub resume return struct suspend switch test threadlocal try union unreachable usingnamespace var
+      volatile while`),
+    types: words(`i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f16 f32 f64 f128 bool void anyerror type noreturn
+      comptime_int comptime_float c_int c_uint c_long c_ulong c_char`),
+    constants: words('true false null undefined'),
+  },
+  nasm: {
+    semicolonComments: true, caseless: true, atWords: true,
+    keywords: words(`section segment global extern bits default rel abs align alignb db dw dd dq dt do dy dz resb resw resd
+      resq rest reso resy resz equ times struc endstruc istruc iend at %define %xdefine %macro %endmacro %include %if
+      %elif %else %endif %ifdef %ifndef %assign %rep %endrep %define %undef cpu`),
+    types: words(`rax rbx rcx rdx rsi rdi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15 eax ebx ecx edx esi edi ebp esp r8d r9d
+      r10d r11d r12d r13d r14d r15d ax bx cx dx si di bp sp al bl cl dl ah bh ch dh sil dil bpl spl r8b r9b r10b r11b r12b
+      r13b r14b r15b rip byte word dword qword tword oword yword zword ptr
+      xmm0 xmm1 xmm2 xmm3 xmm4 xmm5 xmm6 xmm7 xmm8 xmm9 xmm10 xmm11 xmm12 xmm13 xmm14 xmm15
+      ymm0 ymm1 ymm2 ymm3 ymm4 ymm5 ymm6 ymm7 ymm8 ymm9 ymm10 ymm11 ymm12 ymm13 ymm14 ymm15`),
+    constants: words(''),
+  },
+  wat: {
+    semicolonComments: true,
+    keywords: words(`module func param result local global memory table elem data type import export start call
+      call_indirect return block loop if then else end br br_if br_table unreachable nop drop select mut offset align`),
+    types: words('i32 i64 f32 f64 v128 funcref externref'),
+    constants: words(''),
+  },
+  config: {
+    hashComments: true, hashAfterSpace: true,
+    keywords: words(''),
+    types: words(''),
+    constants: words('true false null yes no on off True False Null'),
+  },
+  json: {
+    slashComments: true,
+    keywords: words(''),
+    types: words(''),
+    constants: words('true false null'),
+  },
+  css: {
+    slashComments: true, atWords: true,
+    keywords: words(`@media @import @font-face @keyframes @supports @layer @container @use @forward @mixin @include
+      @extend @if @else @each @for @function @return @charset @page @namespace`),
+    types: words(''),
+    constants: words('inherit initial unset revert none auto'),
+  },
 };
 
 const EXTENSIONS = {
@@ -61,12 +193,30 @@ const EXTENSIONS = {
   rs: 'rust', py: 'python', pyi: 'python',
   c: 'c', h: 'c', cc: 'c', cpp: 'c', cxx: 'c', hpp: 'c', hh: 'c', hxx: 'c',
   go: 'go',
+  java: 'java', kt: 'kotlin', kts: 'kotlin', cs: 'csharp', swift: 'swift', scala: 'scala', sc: 'scala',
+  rb: 'ruby', rake: 'ruby', gemspec: 'ruby',
+  sh: 'shell', bash: 'shell', zsh: 'shell', ksh: 'shell',
+  php: 'php', lua: 'lua', sql: 'sql', zig: 'zig',
+  asm: 'nasm', nasm: 'nasm', s: 'nasm', inc: 'nasm', wat: 'wat', wast: 'wat',
+  yaml: 'config', yml: 'config', toml: 'config', ini: 'config', cfg: 'config', conf: 'config', env: 'config',
+  json: 'json', jsonc: 'json', json5: 'json',
+  css: 'css', scss: 'css', less: 'css',
+  m: 'c', mm: 'c',
+};
+// whole file names that say the language when there's no useful extension
+const FILE_NAMES = {
+  makefile: 'config', gnumakefile: 'config', dockerfile: 'config', containerfile: 'config', gemfile: 'ruby',
+  rakefile: 'ruby', '.bashrc': 'shell', '.zshrc': 'shell', '.profile': 'shell', '.bash_profile': 'shell',
+  '.gitignore': 'config', '.gitattributes': 'config', '.editorconfig': 'config', '.env': 'config',
 };
 
 // language name from a file name, or null for plain text
 export function languageOf(name) {
-  const m = /\.([A-Za-z0-9]+)$/.exec(String(name));
-  return m ? EXTENSIONS[m[1].toLowerCase()] ?? null : null;
+  const base = String(name).split(/[\\/]/).pop().toLowerCase();
+  if (FILE_NAMES[base]) return FILE_NAMES[base];
+  if (base.startsWith('dockerfile.') || base.endsWith('.dockerfile')) return 'config';
+  const m = /\.([a-z0-9]+)$/.exec(base);
+  return m ? EXTENSIONS[m[1]] ?? null : null;
 }
 export const language = (name) => LANGUAGES[name] ?? null;
 
@@ -134,7 +284,10 @@ export function lexLine(L, bytes, start, end, state, out) {
       if (paint) paint(i, j, COMMENT);
       i = j; lineStart = false; continue;
     }
-    if (L.hashComments && b === 35) { if (paint) paint(i, end, COMMENT); return S_NORMAL; }
+    // '#' in shell and config files is a comment only at the start or after a space: $#, ${#a}, a#b are not
+    if (L.hashComments && b === 35 && (!L.hashAfterSpace || i === start || bytes[i - 1] === 32 || bytes[i - 1] === 9)) { if (paint) paint(i, end, COMMENT); return S_NORMAL; }
+    if (L.dashComments && b === 45 && next === 45) { if (paint) paint(i, end, COMMENT); return S_NORMAL; }
+    if (L.semicolonComments && b === 59) { if (paint) paint(i, end, COMMENT); return S_NORMAL; }
     if (L.preprocessor && b === 35 && lineStart) {
       let j = i + 1;
       while (j < end && (bytes[j] === 32 || bytes[j] === 9)) ++j;
@@ -154,7 +307,7 @@ export function lexLine(L, bytes, start, end, state, out) {
     lineStart = false;
     // strings
     if (b === 34 || b === 39 || (b === 96 && L.backtick)) {
-      if (L.triple && b !== 96 && next === b && i + 2 < end && bytes[i + 2] === b) {
+      if (L.triple && b !== 96 && (b === 34 || !L.tripleDoubleOnly) && next === b && i + 2 < end && bytes[i + 2] === b) {
         const j = tripleEnd(bytes, i + 3, end, b);
         if (j < 0) { if (paint) paint(i, end, STRING); return b === 34 ? S_TRIPLE_DOUBLE : S_TRIPLE_SINGLE; }
         if (paint) paint(i, j, STRING);
@@ -190,8 +343,8 @@ export function lexLine(L, bytes, start, end, state, out) {
       if (paint) paint(i, j, NUMBER);
       i = j; continue;
     }
-    // words
-    if (isIdentStart(b, L.dollarIdent)) {
+    // words; a NASM %directive and a CSS @rule are words too
+    if (isIdentStart(b, L.dollarIdent) || ((b === 37 || b === 64) && L.atWords && isIdentStart(next, false))) {
       let j = i + 1;
       while (j < end && isIdent(bytes[j], L.dollarIdent)) ++j;
       const after = j < end ? bytes[j] : 0;
@@ -213,7 +366,7 @@ export function lexLine(L, bytes, start, end, state, out) {
         }
       }
       if (paint) {
-        const w = wordAt(bytes, i, j);
+        const w = L.caseless ? wordAt(bytes, i, j).toLowerCase() : wordAt(bytes, i, j);
         let cls = PLAIN;
         if (L.keywords.has(w)) cls = KEYWORD;
         else if (L.constants.has(w)) cls = NUMBER;
