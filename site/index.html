@@ -3,10 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>seams · a diff viewer for files too big for everything else</title>
-<meta name="description" content="seams is a line diff engine and viewer. The engine is hand-written x86-64 assembly and WebAssembly, the view is drawn with WebGL: a million-line diff opens in a fifth of a second, a 1,200-file pull request is diffed in a quarter, and GitHub comments stay in sync.">
+<title>seams · a fast diff viewer for huge files and GitHub pull requests</title>
+<meta name="description" content="seams is a free, open-source diff viewer for files too big for everything else. The engine is hand-written x86-64 assembly and WebAssembly, the view is drawn with WebGL: a million-line diff opens in a fifth of a second, a 1,200-file pull request is diffed in a quarter, and GitHub comments stay in sync.">
+<meta name="author" content="Pawan Kalyan">
+<link rel="canonical" href="https://cintu07.github.io/seams/">
 <meta name="theme-color" content="#c3dbc8">
-<meta property="og:title" content="seams">
+<meta property="og:title" content="seams · a diff viewer for files too big for everything else">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://cintu07.github.io/seams/">
+<meta property="og:site_name" content="seams">
+<meta name="twitter:title" content="seams · a diff viewer for files too big for everything else">
+<meta name="twitter:description" content="A million-line diff in a fifth of a second, in your browser. The engine is hand-written assembly.">
+<meta name="twitter:creator" content="@pawankalyandev">
 <meta property="og:description" content="A diff viewer for files too big for everything else: a million lines in a fifth of a second, scrolled at your screen's refresh rate.">
 <meta property="og:image" content="https://cintu07.github.io/seams/assets/share.png">
 <meta property="og:image:width" content="1200">
@@ -203,6 +211,9 @@ await viewer.setPack('/pr.seamspack');</code></pre></div>
     <details><summary>is my code uploaded anywhere?</summary><p>no. the site diffs in your tab, the cli and the local review never touch the network, and the extension talks only to github, for the pull request you opened.</p></details>
     <details><summary>is it free?</summary><p>yes, mit licence, all of it. the source is on <a href="https://github.com/Cintu07/seams">github</a>.</p></details>
     <details><summary>does it replace github's review?</summary><p>for reading, mostly: every file, comments in and out, live updates. approving, requesting changes and suggestions still happen on github.</p></details>
+    <details><summary>how do i compare two very large files?</summary><p>pick <b>your two files</b> in the viewer above. they're diffed in this tab, and a pair of million-line files takes about a fifth of a second. from a terminal, <code>seams old.txt new.txt</code> prints a unified diff that <code>patch</code> and <code>git apply</code> read.</p></details>
+    <details><summary>what is seams written in?</summary><p>the diff engine is written by hand twice: in x86-64 assembly (nasm) for the command line, and in webassembly text for the browser, where it's about 5 kb. the viewer is javascript that draws every character with webgl2.</p></details>
+    <details><summary>how is it different from git diff or github's diff view?</summary><p><code>git diff</code> prints text, and github stops rendering files past a size limit. seams shows a diff of any size in a viewer that scrolls at your screen's refresh rate, with find, side by side and syntax highlighting, and opens a whole pull request at once.</p></details>
     <details><summary>where is it still behind?</summary><p>with <code>--minimal</code>, on files with thousands of edits scattered all through them, seams is slower than imara-diff's default mode, because it insists on the shortest diff; the default fast mode is now ahead of imara there too. there's no native arm64 build yet, and the windows binary isn't signed. syntax highlighting covers about twenty languages with small hand-written lexers, not full grammars.</p></details>
   </div>
 </section>

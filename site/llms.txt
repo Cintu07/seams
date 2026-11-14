@@ -1,0 +1,32 @@
+# seams
+
+> seams is a free, open-source (MIT) diff viewer for files too big for everything else. Its line diff engine is written by hand in x86-64 assembly (NASM) for the command line and again in WebAssembly text for the browser; the viewer draws every character with WebGL2. A diff of two million-line files opens in about 0.2 s in a browser tab and scrolls at the display's refresh rate. Made by Pawan Kalyan (Cintu07, https://pawann.dev).
+
+## What it does
+
+- Diffs two files of any size in the browser, with nothing uploaded: https://cintu07.github.io/seams/#try
+- Opens a whole pull request or branch at once (`node tools/seams-review.mjs main..my-branch`); 1,218 files of tinygrad were diffed in 255 ms.
+- A browser extension adds an "open in seams" button to GitHub pull requests; review comments are synced both ways and new pushes appear within ten seconds.
+- A command-line tool prints standard unified diffs (`seams old new`), writes and applies self-checking patches, and does three-way merges, on Linux, Windows and macOS (x86-64).
+- An embeddable JavaScript library: `import { createDiffViewer } from 'https://cintu07.github.io/seams/lib/index.mjs'`, with a React component.
+- Unified and side-by-side views, find across the whole diff, copy, seven colour themes (one for red-green colour blindness), and syntax highlighting for about twenty languages.
+
+## Numbers (same laptop, same files)
+
+- Million-line diff, first screen: 0.19 s, against 6 s for @pierre/diffs at its best settings; fully highlighted in 0.49 s against 41 s.
+- Scrolling: 145 fps against 48.
+- Against imara-diff (Rust), default mode: 100k lines with 10,000 scattered edits in 12.5 ms against 16.1; 3,000 real Linux kernel commit pairs in 166 ms against 319.
+- With `--minimal` (always the shortest diff), imara-diff's default mode is faster on files with thousands of scattered edits.
+
+## Limits
+
+- No native ARM64 build (Apple Silicon and Windows on ARM run the x86-64 build through emulation).
+- The Windows binary is not code-signed.
+- Syntax highlighting uses small hand-written lexers, not full grammars.
+
+## Links
+
+- Site and live demo: https://cintu07.github.io/seams/
+- Source: https://github.com/Cintu07/seams
+- Releases: https://github.com/Cintu07/seams/releases
+- How it was built: https://cintu07.github.io/posts/seams/
