@@ -5,8 +5,12 @@
 import { DiffRenderer } from './renderer.mjs';
 import { THEMES } from './look.mjs';
 import { createInteraction } from './interact.mjs';
-import { languageOf } from './lex.mjs';
+import { language as lexer, languageOf, lineStates } from './lex.mjs';
 import { readPack } from './pack.mjs';
+import { previewTop } from './layout.mjs';
+
+// files at least this big get their unchanged top drawn while the worker diffs them
+const PREVIEW_BYTES = 1 << 20;
 
 let worker = null, nextId = 0;
 const waiting = new Map();   // id -> { resolve, onStates }
@@ -202,7 +206,7 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
   // the atlas is drawn with whatever font is ready; redraw it once web fonts arrive
   document.fonts?.ready.then(() => { if (!destroyed) { renderer.rebuildAtlas(); requestFrame(); } });
 
-  async function show(result, t0) {
+  async function show(result, t0, firstScreen) {
     ix.clear();
     renderer.setDiff(result);
     current = result;
@@ -210,6 +214,7 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
     renderer.draw(ix.decorate);
     await new Promise((r) => requestAnimationFrame(r));
     result.timing.firstFrame = performance.now() - t0;
+    result.timing.firstScreen = firstScreen ?? result.timing.firstFrame;
     canvas.setAttribute('aria-label', `diff, ${result.deleted} lines deleted, ${result.inserted} inserted`);
     drawMarks();
     requestFrame();
@@ -223,7 +228,9 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
       const lang = language !== undefined ? language : languageOf(newName ?? name ?? '') ?? languageOf(oldName ?? '');
       const t0 = performance.now();
       const [a, b] = await Promise.all([toBuffer(oldFile), toBuffer(newFile)]);
-      const result = await new Promise((resolve) => {
+      // read before the buffers go to the worker
+      const top = a.byteLength + b.byteLength >= PREVIEW_BYTES ? previewTop(a, b, renderer.pageRows + 2) : null;
+      const pending = new Promise((resolve) => {
         waiting.set(id, {
           lang, resolve,
           onStates: (data) => {
@@ -235,11 +242,26 @@ export function createDiffViewer(element, { theme = 'sage', view = 'unified', fo
         });
         getWorker().postMessage({ id, a, b, lang }, [a, b]);
       });
+      let firstScreen;
+      if (top && !destroyed && mine === loadId) {
+        // nothing works on a preview but looking at it, so there's no current diff until the real one lands
+        current = null;
+        ix.clear();
+        top.lang = lang;
+        renderer.setDiff(top);
+        const L = lang && lexer(lang);
+        if (L && renderer.highlighter) { const st = lineStates(L, top.a, top.rows.kind.length); renderer.highlighter.setStates({ a: st, b: st }); }
+        drawMarks();
+        renderer.draw();
+        await new Promise((r) => requestAnimationFrame(r));
+        firstScreen = performance.now() - t0;
+      }
+      const result = await pending;
       if (destroyed || mine !== loadId) return null;   // a newer setFiles won
       result.a = new Uint8Array(result.a);
       result.b = new Uint8Array(result.b);
       result.lang = lang;
-      return show(result, t0);
+      return show(result, t0, firstScreen);
     },
     /** Open a diff made ahead of time with seams-pack: nothing is diffed in the browser. */
     async setPack(source) {

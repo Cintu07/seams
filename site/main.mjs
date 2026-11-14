@@ -107,7 +107,7 @@ function report(stats, extra = '') {
   current = stats;
   const t = stats.timing;
   $('stats').textContent = `${fmt(stats.rows)} rows · −${fmt(stats.deleted)} +${fmt(stats.inserted)} · diff ${t.diff.toFixed(1)} ms · ` +
-    `first frame ${t.firstFrame.toFixed(1)} ms${extra}`;
+    `first frame ${t.firstFrame.toFixed(1)} ms${t.firstScreen < t.firstFrame - 1 ? ` (unchanged top in ${t.firstScreen.toFixed(1)} ms)` : ''}${extra}`;
   $('mascot').innerHTML = face('happy', { scale: 6, accent: theme.renderer.insertedMark });
 }
 

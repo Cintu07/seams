@@ -56,3 +56,26 @@ export function pairLines(script, na, nb) {
   }
   return { pairA, pairB };
 }
+
+// The top of a diff before the diff exists. Any diff of two files starts with their common prefix as
+// context (it is trimmed before Myers runs), so when the first `lines` lines of both files are the same
+// bytes, those rows are already final and can be drawn while the real diff runs. Returns null when a
+// change starts sooner than that, or a file is shorter. Reads only those first lines.
+export function previewTop(a, b, lines) {
+  const A = new Uint8Array(a), B = new Uint8Array(b);
+  const starts = new Uint32Array(lines), lens = new Uint32Array(lines);
+  let at = 0;
+  for (let n = 0; n < lines; ++n) {
+    const nl = A.indexOf(10, at);
+    if (nl < 0 || nl >= B.length || B[nl] !== 10) return null;
+    for (let k = at; k < nl; ++k) if (A[k] !== B[k]) return null;
+    starts[n] = at; lens[n] = nl + 1 - at; at = nl + 1;
+  }
+  const bytes = A.slice(0, at), none = { count: 0, aStart: [], bStart: [], aCount: [], bCount: [] };
+  return {
+    preview: true, a: bytes, b: bytes,
+    tables: { aStart: starts, aLen: lens, bStart: starts, bLen: lens },
+    rows: layoutUnified(none, lines, lines), split: layoutSplit(none, lines, lines), pairs: null,
+    deleted: 0, inserted: 0, records: 0, timing: {},
+  };
+}

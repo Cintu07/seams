@@ -26,7 +26,7 @@ for (const [o, n] of pairs) {
   const jump = await page.evaluate((k) => window.viewer.jumps(k), Math.floor(frames / 2));
   const heap = await page.evaluate(() => performance.memory ? performance.memory.usedJSHeapSize / 2 ** 20 : NaN);
   const dom = await page.evaluate(() => document.getElementsByTagName('*').length);
-  console.log(`${n} rows=${load.rows} diff=${f(load.diff)} layout=${f(load.layout)} first_frame=${f(load.firstFrame)} ms | ` +
+  console.log(`${n} rows=${load.rows} diff=${f(load.diff)} layout=${f(load.layout)} first_screen=${f(load.firstScreen)} first_frame=${f(load.firstFrame)} ms | ` +
     `scroll frame p50/p99/max ${f(scroll.frame.p50)}/${f(scroll.frame.p99)}/${f(scroll.frame.max)} cpu p99 ${f(scroll.cpu.p99)} | ` +
     `jump frame p50/p99/max ${f(jump.frame.p50)}/${f(jump.frame.p99)}/${f(jump.frame.max)} cpu p99 ${f(jump.cpu.p99)} | ` +
     `heap ${heap.toFixed(0)} MiB dom ${dom}`);

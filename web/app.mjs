@@ -3,8 +3,12 @@
 import { DiffRenderer } from './renderer.mjs';
 import { THEMES, icon, face, drawSkyline } from './look.mjs';
 import { createInteraction } from './interact.mjs';
-import { languageOf } from './lex.mjs';
+import { language, languageOf, lineStates } from './lex.mjs';
 import { readPack } from './pack.mjs';
+import { previewTop } from './layout.mjs';
+
+// files at least this big get their unchanged top drawn while the worker diffs them
+const PREVIEW_BYTES = 1 << 20;
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view'), stats = $('stats'), bar = $('bar'), thumb = $('thumb'), marks = $('marks');
@@ -161,11 +165,28 @@ async function show(a, b, names) {
   setMood('busy', 'diffing…');
   const t0 = performance.now();
   const lang = languageOf(names[1]) ?? languageOf(names[0]);
-  const result = await diffInWorker(a, b, lang);
+  // read before the buffers go to the worker
+  const top = a.byteLength + b.byteLength >= PREVIEW_BYTES ? previewTop(a, b, renderer.pageRows + 2) : null;
+  const pending = diffInWorker(a, b, lang);
+  let firstScreen;
+  if (top) {
+    // the unchanged top of both files, final already; nothing but looking works until the real diff lands
+    current = null;
+    ix.clear();
+    top.lang = lang;
+    renderer.setDiff(top);
+    const L = lang && language(lang);
+    if (L && renderer.highlighter) { const st = lineStates(L, top.a, top.rows.kind.length); renderer.highlighter.setStates({ a: st, b: st }); }
+    drawMarks();
+    renderer.draw();
+    empty.hidden = true;
+    firstScreen = (await nextFrame()) - t0;
+  }
+  const result = await pending;
   result.lang = lang;
   result.a = new Uint8Array(result.a);
   result.b = new Uint8Array(result.b);
-  return present(result, names, t0);
+  return present(result, names, t0, firstScreen);
 }
 
 // a pack was diffed ahead of time: no worker, no diff, only rows to lay out and a frame to draw
@@ -175,7 +196,7 @@ async function showPack(buffer, label) {
   return present(result, result.names ?? [label, label], t0);
 }
 
-async function present(result, names, t0) {
+async function present(result, names, t0, firstScreen) {
   ix.clear();
   renderer.setDiff(result);
   current = result;
@@ -183,6 +204,7 @@ async function present(result, names, t0) {
   renderer.draw();
   await nextFrame();
   result.timing.firstFrame = performance.now() - t0;
+  result.timing.firstScreen = firstScreen ?? result.timing.firstFrame;
   empty.hidden = true;
   const [oldName, newName] = names.map(shortName);
   $('files').textContent = `${oldName} → ${newName}`;

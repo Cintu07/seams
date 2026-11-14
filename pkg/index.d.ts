@@ -1,5 +1,7 @@
 export type FileInput = string | ArrayBuffer | ArrayBufferView | Blob;
-export type Language = 'ts' | 'rust' | 'python' | 'c' | 'go';
+export type Language =
+  | 'ts' | 'rust' | 'python' | 'c' | 'go' | 'java' | 'kotlin' | 'csharp' | 'swift' | 'scala' | 'ruby'
+  | 'shell' | 'php' | 'lua' | 'sql' | 'zig' | 'nasm' | 'wat' | 'config' | 'json' | 'css';
 
 export interface Theme {
   name: string;
@@ -31,8 +33,12 @@ export interface DiffStats {
   inserted: number;
   changes: number;
   language: Language | null;
-  /** ms: diff (WebAssembly), layout, firstFrame (from setFiles to pixels), states (highlighter pass) */
-  timing: { diff: number; layout: number; firstFrame: number; states?: number };
+  /**
+   * ms: diff (WebAssembly), layout, firstFrame (from setFiles to the whole diff on screen), firstScreen
+   * (to the first pixels: on files over 1 MiB whose first screen of lines is unchanged, those lines are
+   * drawn while the diff runs), states (highlighter pass)
+   */
+  timing: { diff: number; layout: number; firstFrame: number; firstScreen: number; states?: number };
 }
 export interface DiffViewer {
   setFiles(oldFile: FileInput, newFile: FileInput, options?: FileOptions): Promise<DiffStats | null>;

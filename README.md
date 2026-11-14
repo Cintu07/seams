@@ -65,6 +65,17 @@ node web/serve.mjs          # http://localhost:4174/ ; pick or drop two files
 Up/Down, Home/End, `n`/`p` for the next/previous change. A 1M-line diff scrolls within the display
 frame budget (p99 under 8 ms at 145 Hz) with 0.2 ms of CPU per frame; `web/bench_viewer.mjs` measures it.
 
+The rows at the top of a diff are often unchanged, and unchanged leading lines are context in any diff
+(the engine trims them before Myers runs). So when two files over 1 MiB start with a screen of the
+same lines, the viewer draws those lines while the worker is still diffing, and swaps in the whole
+diff at the same rows when it lands. On the 1M-line benchmark that puts text on screen in one display
+frame (about 2 ms) instead of 0.2 s; `timing.firstScreen` reports it next to `timing.firstFrame`.
+
+Syntax highlighting is a set of small hand-written lexers, picked from the file name: TypeScript and
+JavaScript, Rust, Python, C and C++, Go, Java, Kotlin, C#, Swift, Scala, Ruby, shell, PHP, Lua, SQL,
+Zig, NASM, WebAssembly text, JSON, CSS and SCSS, and YAML, TOML, Makefiles and Dockerfiles for
+comments and constants. `node web/test_lex.mjs` checks them.
+
 Themes: `sage`, `dusk`, `paper`, `clay`, `ink`, `harbor` and `clear`, passed as `{ theme: 'ink' }` or
 `viewer.setTheme('paper')`. `clear` marks deleted lines orange and inserted lines blue instead of
 red and green, so the two stay apart with red-green colour blindness. A theme is a plain object, so
